@@ -47,10 +47,16 @@ What exists right now:
   Brazil) that refits the map, a weekly time slider with play/pause over the site's harvest
   dates (segments harvested by the slider date coloured by harvest date, the rest standing
   green, undated grey) and the cumulative count of detected harvests from `/weekly`, a
-  legend, hover highlight and, on click, the segment's tile properties in the side panel.
+  legend and hover highlight;
+* the **field detail panel**: clicking a segment loads `/segments/{site}/{segment_id}` into
+  the side panel: area, status and "Zoom to field"; harvest date ± uncertainty, date
+  confidence and the optical and radar cane probabilities, HV drop and minimum coherence;
+  the field summary with an EN / ES toggle and its source; HV, HH (both orbits) and
+  coherence charts on one date axis with the harvest date band and nearby fires; the fire
+  list within 200 m and the field's alerts.
 
-The other event features (field detail with charts, season dashboard, alerts, raster swipe,
-deployment) do not exist yet.
+The other event features (season dashboard, alerts view, raster swipe, deployment) do not
+exist yet.
 
 **Planned during the event:** API, map, field detail, season dashboard, alerts, raster
 swipe, site switcher, deployment. Build order and estimates:

@@ -38,3 +38,12 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
 - The map reads the API tiles: site select (Morelos / Brazil), weekly time slider on Sundays
   with play/pause and the cumulative harvest count from `/weekly`, legend, hover and click.
 - Type-check and build pass; screenshots in `docs/screenshots/`.
+
+## 2026-11-14 15:52 CST
+
+- Added the field detail panel (`web/src/FieldDetail.tsx`): one `/segments` request per click,
+  the previous one aborted; loading, not-found and error states; summary EN / ES toggle.
+- Hand-written SVG charts (`TimeSeriesChart.tsx`, pure helpers in `chartScale.ts`, Okabe-Ito
+  colours in `colors.ts`): HV, HH and coherence on one date axis, harvest band, fire markers.
+- The shared axis is the site's series range, stretched to coherence pairs ending after it.
+- Type-check and build pass; checked by eye on Morelos cc20456, cc01663 and Brazil cc20010.
