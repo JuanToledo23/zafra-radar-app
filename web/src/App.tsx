@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import FindField from "./FindField";
 import MapView from "./MapView";
 import SeasonPanel, { type Weekly } from "./SeasonPanel";
 import SidePanel from "./SidePanel";
 import TimeSlider from "./TimeSlider";
 import type { BasemapState } from "./basemap";
+import type { ReferenceCollection } from "./reference";
 import { cumulativeHarvests, toDay, weekSteps } from "./season";
 
 // Subset of GET /sites used by the map and the season panel (docs/API.md).
@@ -24,24 +26,21 @@ export type Site = {
   official_final: { mill: string; area_ha: number } | null;
 };
 
-// Tile feature properties (docs/API.md); the optional ones are absent when null.
-export type SegmentProps = {
-  segment_id: string;
-  status: string;
-  confidence: string;
-  area_ha: number;
-  p_cane: number;
-  p_cane_radar: number;
-  harvest_date?: string;
-  date_uncertainty_days?: number;
-};
+// What the side panel shows: a map segment (`from`: the reference field whose card linked to
+// it) or a reference field.
+export type Selection =
+  | { kind: "segment"; id: string; from?: string }
+  | { kind: "reference"; id: string }
+  | null;
 
 export const SITE_LABELS: Record<string, string> = { morelos: "Morelos", brazil: "Brazil" };
 const DEFAULT_SITE = "morelos";
 const PLAY_STEP_MS = 600;
 
 export default function App() {
-  const [selected, setSelected] = useState<SegmentProps | null>(null);
+  const [selected, setSelected] = useState<Selection>(null);
+  const [reference, setReference] = useState<ReferenceCollection | null>(null);
+  const [referenceOn, setReferenceOn] = useState(false);
   const [basemap, setBasemap] = useState<BasemapState>("checking");
   const [api, setApi] = useState<string>("checking");
   const [sites, setSites] = useState<Site[]>([]);
@@ -73,6 +72,18 @@ export default function App() {
       .then(setWeekly)
       .catch(() => {
         if (!ctrl.signal.aborted) setWeekly(null);
+      });
+    return () => ctrl.abort();
+  }, [siteId]);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    setReference(null);
+    fetch(`/api/reference/${siteId}`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setReference)
+      .catch(() => {
+        if (!ctrl.signal.aborted) setReference(null);
       });
     return () => ctrl.abort();
   }, [siteId]);
@@ -145,6 +156,26 @@ export default function App() {
           >
             Season progress
           </button>
+          <button
+            type="button"
+            className={`season-toggle${referenceOn ? " on" : ""}`}
+            aria-pressed={referenceOn}
+            data-testid="reference-toggle"
+            disabled={!reference?.features.length}
+            title={reference?.features.length ? undefined : "No reference fields for this site"}
+            onClick={() => setReferenceOn(!referenceOn)}
+          >
+            Reference fields
+          </button>
+          <FindField
+            siteId={siteId}
+            reference={reference}
+            onFound={(sel, bbox) => {
+              if (sel?.kind === "reference") setReferenceOn(true);
+              setSelected(sel);
+              setZoomTo({ bbox });
+            }}
+          />
         </div>
         <div className="badges">
           <span className={`badge badge-${basemap}`} data-testid="basemap-state">
@@ -157,7 +188,16 @@ export default function App() {
       </header>
       <main className={`main${seasonOpen ? " season-open" : ""}${seasonOpen && seasonExpanded ? " season-expanded" : ""}`}>
         <div className="map-col">
-          <MapView site={site} day={day} zoomTo={zoomTo} onSelect={setSelected} onBasemap={setBasemap} />
+          <MapView
+            site={site}
+            day={day}
+            zoomTo={zoomTo}
+            reference={reference}
+            referenceOn={referenceOn}
+            selected={selected}
+            onSelect={setSelected}
+            onBasemap={setBasemap}
+          />
           {seasonOpen && site && (
             <SeasonPanel
               site={site}
@@ -170,7 +210,14 @@ export default function App() {
             />
           )}
         </div>
-        <SidePanel site={site} selected={selected} onZoom={(bbox) => setZoomTo({ bbox })} />
+        <SidePanel
+          site={site}
+          selected={selected}
+          reference={reference}
+          referenceOn={referenceOn}
+          onZoom={(bbox) => setZoomTo({ bbox })}
+          onSelect={setSelected}
+        />
         {day !== null && (
           <TimeSlider
             steps={steps}

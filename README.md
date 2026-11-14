@@ -61,6 +61,13 @@ What exists right now:
   the browser (replaced by a note when the season has fewer than 30 fires in cane); for Morelos, detected vs official cumulative share with the 25/50/75 % levels
   and the 50 % crossing dates. A marker follows the time slider on every chart, and clicking
   a week moves the slider there. "Expand" grows the panel to about 75 % of the window.
+* **reference fields**: the loader also fills `reference_fields`, `reference_dates` and
+  `reference_summaries` (Morelos' 38 traced fields, with their NDVI harvest windows, p36's
+  reported ground-truth dates and summaries), served by `/reference/{site}`. "Reference
+  fields" in the header draws the outlines (white dashes, id labels from zoom 12); clicking
+  one opens a card with its reference dates, the radar date ± uncertainty of the field and
+  of each overlapping segment, the difference in days, the summary (EN / ES) and links to
+  the segments' detail. "Find field" flies to a reference field (p36) or a segment (cc20456).
 
 The other event features (alerts view, raster swipe, deployment) do not exist yet.
 

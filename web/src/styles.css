@@ -117,3 +117,20 @@ html, body, #root { margin: 0; height: 100%; }
 .season-plot .axis-title { font-size: 10px; fill: var(--ink); }
 .season-note { font-size: 11px; margin: 2px 0 0; line-height: 1.35; }
 .chart-legend .season-r { display: block; }
+.season-toggle:disabled { opacity: 0.5; cursor: default; }
+.find { display: flex; align-items: center; gap: 4px; }
+.find input { font: inherit; font-size: 12px; padding: 2px 6px; width: 170px; border-radius: 4px; border: 1px solid #fff; }
+.find button { font: inherit; font-size: 12px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+.find-status { font-size: 12px; background: #9a6b00; padding: 1px 6px; border-radius: 8px; }
+.ref-label {
+  font-size: 11px; font-weight: 600; color: #fff; background: rgba(29, 29, 29, 0.75);
+  padding: 0 4px; border-radius: 3px; pointer-events: none; white-space: nowrap;
+}
+.ref-date { margin: 4px 0 8px; }
+.ref-date-value { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ref-verbatim { font-size: 12px; }
+.ref-verbatim th { width: 52px; vertical-align: top; }
+.ref-table td, .ref-table th { white-space: nowrap; }
+.ref-field-row td { font-weight: 600; }
+.link { font: inherit; background: none; border: 0; padding: 0; color: #0b5cad; text-decoration: underline; cursor: pointer; }
+.back { font-size: 12px; margin-bottom: 6px; }

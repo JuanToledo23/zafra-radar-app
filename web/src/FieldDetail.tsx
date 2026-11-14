@@ -189,7 +189,7 @@ function Charts({ d, site }: { d: SegmentDetail; site: Site }) {
   );
 }
 
-function Summary({ summary }: { summary: SegmentDetail["summary"] }) {
+export function Summary({ summary }: { summary: SegmentDetail["summary"] }) {
   const [lang, setLang] = useState<"en" | "es">("en");
   if (!summary) return <p className="muted">No summary for this field yet</p>;
   const s = summary[lang];

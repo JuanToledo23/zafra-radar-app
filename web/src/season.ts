@@ -12,6 +12,10 @@ export const STANDING_COLOR = "#2b8a3e";
 export const UNDATED_COLOR = "#9a9a9a";
 export const DATED_OPACITY = 0.8;
 export const UNDATED_OPACITY = 0.35;
+// Reference-field outlines: white dashes on a dark casing, unlike any fill colour above and
+// visible on both the satellite and the plain basemap.
+export const REFERENCE_COLOR = "#ffffff";
+export const REFERENCE_CASING = "#1d1d1d";
 
 /** Days since 1970-01-01 of an ISO date (`YYYY-MM-DD`). */
 export function toDay(iso: string): number {

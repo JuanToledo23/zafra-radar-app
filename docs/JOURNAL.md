@@ -58,3 +58,12 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
   50 % crossings 2026-02-07 / 2026-02-14.
 - The slider index is clamped on a site change; switching site late in the season crashed the slider.
 - Type-check and build pass; checked headless in Chrome for both sites in both panel sizes.
+
+## 2026-11-14 16:22 CST
+
+- Loader: reference fields (`reference_fields`, `reference_dates`, `reference_summaries`) from the
+  config's `reference_fields` GeoJSON and the 38 reference records of `summaries.jsonl`; properties
+  allow-listed (none holds a personal name); two runs give identical counts (38 / 28 / 152).
+- `/reference/{site}` with dates, facts, summary and overlapping cane segments (p36: 9 covering 63 %);
+  web: outline toggle with id labels, reference card, "Find field" box.
+- 6 new loader tests and 2 HTTP tests; 29 pass. Type-check and build pass; checked headless in Chrome.
