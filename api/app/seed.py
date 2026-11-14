@@ -1,4 +1,4 @@
-"""Create the (empty) schema from schema.sql. Loads no data: the loader is a hackathon item."""
+"""Create the schema from schema.sql (idempotent). Loads no data: that is app.loader."""
 
 import asyncio
 from pathlib import Path
