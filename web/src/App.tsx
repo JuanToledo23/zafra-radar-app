@@ -15,6 +15,8 @@ export type Site = {
   dated_segment_count: number;
   harvest_date_min: string;
   harvest_date_max: string;
+  series_date_min: string;
+  series_date_max: string;
 };
 
 // Tile feature properties (docs/API.md); the optional ones are absent when null.
@@ -42,6 +44,8 @@ export default function App() {
   const [weeks, setWeeks] = useState<WeekCount[] | null>(null);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
+  // "Zoom to field": a new object each click, so the same bbox can be flown to again.
+  const [zoomTo, setZoomTo] = useState<{ bbox: [number, number, number, number] } | null>(null);
 
   useEffect(() => {
     fetch("/api/health")
@@ -123,8 +127,8 @@ export default function App() {
         </div>
       </header>
       <main className="main">
-        <MapView site={site} day={day} onSelect={setSelected} onBasemap={setBasemap} />
-        <SidePanel site={site} selected={selected} />
+        <MapView site={site} day={day} zoomTo={zoomTo} onSelect={setSelected} onBasemap={setBasemap} />
+        <SidePanel site={site} selected={selected} onZoom={(bbox) => setZoomTo({ bbox })} />
         {day !== null && (
           <TimeSlider
             steps={steps}

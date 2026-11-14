@@ -74,11 +74,12 @@ function addSegmentLayers(map: maplibregl.Map, tiles: string) {
 type Props = {
   site: Site | null;
   day: number | null;
+  zoomTo: { bbox: [number, number, number, number] } | null;
   onSelect: (p: SegmentProps | null) => void;
   onBasemap: (s: BasemapState) => void;
 };
 
-export default function MapView({ site, day, onSelect, onBasemap }: Props) {
+export default function MapView({ site, day, zoomTo, onSelect, onBasemap }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -169,6 +170,14 @@ export default function MapView({ site, day, onSelect, onBasemap }: Props) {
       harvestColorExpression(toDay(site.harvest_date_min), toDay(site.harvest_date_max), day),
     );
   }, [loaded, site, day]);
+
+  // "Zoom to field" from the side panel.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!loaded || !map || !zoomTo) return;
+    const [w, s, e, n] = zoomTo.bbox;
+    map.fitBounds([w, s, e, n], { padding: 80, maxZoom: 17 });
+  }, [loaded, zoomTo]);
 
   return <div ref={container} className="map" data-testid="map" />;
 }
