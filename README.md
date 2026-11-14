@@ -43,9 +43,14 @@ What exists right now:
 * the **API** serves the loaded data: `/sites`, `/tiles/{site}/{z}/{x}/{y}.pbf` (segment
   vector tiles), `/segments/{site}/{segment_id}` and `/weekly/{site}`, besides `/health`
   and `/version` (see [docs/API.md](docs/API.md));
-* the map shows a bundled sample of 50 Morelos segments (`web/public/sample.geojson`).
+* the **map** draws the segment vector tiles from the API, with a site select (Morelos /
+  Brazil) that refits the map, a weekly time slider with play/pause over the site's harvest
+  dates (segments harvested by the slider date coloured by harvest date, the rest standing
+  green, undated grey) and the cumulative count of detected harvests from `/weekly`, a
+  legend, hover highlight and, on click, the segment's tile properties in the side panel.
 
-The map and the other event features do not read the API yet.
+The other event features (field detail with charts, season dashboard, alerts, raster swipe,
+deployment) do not exist yet.
 
 **Planned during the event:** API, map, field detail, season dashboard, alerts, raster
 swipe, site switcher, deployment. Build order and estimates:
@@ -90,7 +95,7 @@ The stack needs the network only to **build** (base images, pip, npm). Once buil
 starts and the map renders with no network:
 
 * the basemap (Esri World Imagery) is shown only if a probe tile loads; otherwise, or if
-  tiles start failing, the map falls back to a plain background with the sample polygons
+  tiles start failing, the map falls back to a plain background with the segment polygons
   ("basemap: offline (plain)" in the header). The style uses no fonts or sprites;
 * to check that no container needs egress at runtime:
 
@@ -107,8 +112,13 @@ starts and the map renders with no network:
 * `postgis/postgis:16-3.4` is published for amd64 only; on Apple Silicon it runs under
   emulation (`platform: linux/amd64` in compose).
 * Headless check and screenshot: `cd scripts && npm install && node screenshot.mjs
-  [--offline]` writes `docs/skeleton.png` and prints a JSON report (basemap state, API
-  state, clicked polygon, console errors). `--offline` aborts every non-localhost request.
+  [--site morelos|brazil] [--at 0..1] [--out file.png] [--offline]` picks the site, moves
+  the time slider to that fraction of the season, clicks the segment nearest the centre,
+  writes the screenshot (default `docs/skeleton.png`) and prints a JSON report (basemap and
+  API state, slider date, harvest count, panel, console errors). `--offline` aborts every
+  non-localhost request. Map screenshots: `docs/screenshots/`.
+* `web/public/sample.geojson` is no longer drawn; it stays because the web container's
+  compose healthcheck fetches it.
 
 ## Documentation
 

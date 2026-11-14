@@ -30,3 +30,11 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
 - Cumulative curves recomputed from the loaded tables with the definition of the library's
   `scripts/20_official_data.py`; 50 % reached on 2026-02-07 (detected) and 2026-02-14 (official).
 - 8 HTTP tests (`api/tests/test_api.py`) and the 13 loader tests pass.
+
+## 2026-11-14 14:57 CST
+
+- Tiles below z12 are simplified in Web Mercator (half a pixel, 38 m at z10) and collapsed
+  polygons dropped: largest Brazil z10 tile 1,188 kB -> 384 kB, Morelos 333 kB -> 149 kB.
+- The map reads the API tiles: site select (Morelos / Brazil), weekly time slider on Sundays
+  with play/pause and the cumulative harvest count from `/weekly`, legend, hover and click.
+- Type-check and build pass; screenshots in `docs/screenshots/`.

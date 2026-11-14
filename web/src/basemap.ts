@@ -1,6 +1,6 @@
 // Basemap with an offline fallback. The style always has a plain background colour; the
 // Esri World Imagery raster is shown only after a probe tile loads, and hidden again if
-// tiles start failing (wifi drops). The sample polygons never depend on the network.
+// tiles start failing (wifi drops). The segment polygons come from the local API.
 
 export const BASEMAP_SOURCE = "esri-imagery";
 export const BASEMAP_LAYER = "basemap";

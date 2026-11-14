@@ -1,7 +1,9 @@
-// Headless check of the map shell: load the page, wait for the map to go idle, click the
-// polygon nearest the map centre, move the slider, save a screenshot and print a
-// JSON report. --offline aborts every request that is not to localhost, as with wifi off.
-//   node screenshot.mjs [--url http://localhost:5174] [--out ../docs/skeleton.png] [--offline]
+// Headless check of the map: load the page, pick the site, wait for its tiles, move the time
+// slider to a fraction of the season, click the segment nearest the map centre, save a
+// screenshot and print a JSON report. --offline aborts every request that is not to
+// localhost, as with wifi off.
+//   node screenshot.mjs [--url http://localhost:5174] [--out ../docs/skeleton.png]
+//                       [--site morelos|brazil] [--at 0..1] [--offline]
 import { chromium } from "playwright";
 
 const arg = (name, dflt) => {
@@ -10,6 +12,8 @@ const arg = (name, dflt) => {
 };
 const url = arg("--url", `http://localhost:${process.env.WEB_PORT ?? "5174"}`);
 const out = arg("--out", new URL("../docs/skeleton.png", import.meta.url).pathname);
+const site = arg("--site", "morelos");
+const at = Number(arg("--at", "1"));
 const offline = process.argv.includes("--offline");
 
 const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
@@ -30,8 +34,16 @@ page.on("console", (m) => logs.push(`${m.type()}: ${m.text()}`));
 
 const t0 = Date.now();
 await page.goto(url);
-await page.waitForFunction(() => window.__mapReady === true, null, { timeout: 30_000 });
+await page.waitForFunction(() => window.__mapReadySite === "morelos", null, { timeout: 30_000 });
+if (site !== "morelos") {
+  await page.getByTestId("site-select").selectOption(site);
+  await page.waitForFunction((s) => window.__mapReadySite === s, site, { timeout: 30_000 });
+}
 const readyMs = Date.now() - t0;
+const slider = page.locator("#week");
+const index = Math.round(at * Number(await slider.getAttribute("max")));
+await slider.fill(String(index));
+await page.waitForFunction(() => window.__zafraMap.loaded(), null, { timeout: 10_000 });
 
 const box = await page.getByTestId("map").boundingBox();
 const hit = await page.evaluate(() => {
@@ -40,7 +52,7 @@ const hit = await page.evaluate(() => {
   let best = null;
   for (let x = 10; x < width; x += 20) {
     for (let y = 10; y < height; y += 20) {
-      if (!map.queryRenderedFeatures([x, y], { layers: ["fields-fill"] }).length) continue;
+      if (!map.queryRenderedFeatures([x, y], { layers: ["segments-fill"] }).length) continue;
       const d = (x - width / 2) ** 2 + (y - height / 2) ** 2;
       if (!best || d < best.d) best = { x, y, d };
     }
@@ -49,18 +61,20 @@ const hit = await page.evaluate(() => {
 });
 if (hit) await page.mouse.click(box.x + hit.x, box.y + hit.y);
 await page.getByTestId("panel").locator("table").waitFor({ timeout: 5_000 }).catch(() => {});
-await page.locator("#week").fill("10");
-await page.waitForTimeout(300);
+await page.waitForTimeout(500);
 await page.screenshot({ path: out });
 
 const report = {
   url,
   offline,
+  site,
+  slider_index: index,
   map_ready_ms: readyMs,
   basemap: await page.getByTestId("basemap-state").innerText(),
   api: await page.getByTestId("api-state").innerText(),
   panel: (await page.getByTestId("panel").locator("table").innerText().catch(() => "")).replace(/\s+/g, " "),
-  slider_logs: logs.filter((l) => l.includes("[slider]")).length,
+  slider_date: await page.getByTestId("slider-date").innerText(),
+  harvest_count: await page.getByTestId("harvest-count").innerText(),
   blocked_hosts: [...new Set(blocked)],
   page_errors: errors,
   console_errors: logs.filter((l) => l.startsWith("error")),
