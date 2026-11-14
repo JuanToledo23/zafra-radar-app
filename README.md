@@ -53,10 +53,16 @@ What exists right now:
   confidence and the optical and radar cane probabilities, HV drop and minimum coherence;
   the field summary with an EN / ES toggle and its source; HV, HH (both orbits) and
   coherence charts on one date axis with the harvest date band and nearby fires; the fire
-  list within 200 m and the field's alerts.
+  list within 200 m and the field's alerts;
+* the **season progress panel** ("Season progress" in the header) opens across the bottom of
+  the map, from `/sites` and `/weekly/{site}`: cane and dated area and segment counts (and,
+  for Morelos, the official mill area and detected area as a share of it); weekly detected
+  harvests and VIIRS fires within 200 m of cane on one axis with their Pearson r computed in
+  the browser (replaced by a note when the season has fewer than 30 fires in cane); for Morelos, detected vs official cumulative share with the 25/50/75 % levels
+  and the 50 % crossing dates. A marker follows the time slider on every chart, and clicking
+  a week moves the slider there. "Expand" grows the panel to about 75 % of the window.
 
-The other event features (season dashboard, alerts view, raster swipe, deployment) do not
-exist yet.
+The other event features (alerts view, raster swipe, deployment) do not exist yet.
 
 **Planned during the event:** API, map, field detail, season dashboard, alerts, raster
 swipe, site switcher, deployment. Build order and estimates:

@@ -47,3 +47,14 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
   colours in `colors.ts`): HV, HH and coherence on one date axis, harvest band, fire markers.
 - The shared axis is the site's series range, stretched to coherence pairs ending after it.
 - Type-check and build pass; checked by eye on Morelos cc20456, cc01663 and Brazil cc20010.
+
+## 2026-11-14 16:05 CST
+
+- Added the season progress panel (`web/src/SeasonPanel.tsx`) across the bottom 40 % of the map:
+  key numbers, weekly harvests and fires in cane, detected vs official cumulative share (Morelos);
+  an Expand control grows it to about 75 % of the window (cumulative plot 427 px tall at 900 px).
+- Pearson r computed in the browser: 0.708 harvests vs fires in cane, 0.702 vs all fires (library
+  0.708 / 0.702); not shown under 30 fires in cane (Brazil: 14); detected area 104 % of official;
+  50 % crossings 2026-02-07 / 2026-02-14.
+- The slider index is clamped on a site change; switching site late in the season crashed the slider.
+- Type-check and build pass; checked headless in Chrome for both sites in both panel sizes.
