@@ -1,0 +1,419 @@
+"""Load the research library's precomputed outputs into PostGIS.
+
+    python -m app.loader --site morelos|brazil|all [--recreate-schema]
+
+ZAFRA_DATA is the root of a zafra-radar-research checkout (DATA.md lists every input and
+the table it feeds). Each site is reloaded inside one transaction: its row in `sites` is
+deleted (cascading to all its data) and everything is inserted again, so running the
+loader twice gives the same row counts. A missing required file stops the load with its
+path; a missing optional input (summaries, official data) is skipped with one log line.
+
+The parsing functions below are pure (no database, no files) and unit-tested in
+api/tests/; the async functions after them do the reading and writing.
+"""
+
+import argparse
+import asyncio
+import csv
+import datetime as dt
+import json
+import math
+import os
+import sys
+import time
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+import yaml
+
+SITES = ("morelos", "brazil")
+LANGS = ("es", "en")
+SCHEMA = Path(__file__).with_name("schema.sql")
+# Dropped by --recreate-schema (children first; CASCADE covers anything left over).
+APP_TABLES = ("alerts", "summaries", "official_weekly", "weekly", "fires", "segment_coherence",
+              "segment_series", "segments", "sites")
+COUNT_TABLES = ("sites", "segments", "segment_series", "segment_coherence", "fires", "weekly",
+                "official_weekly", "summaries", "alerts")
+
+# Slim GeoJSON properties -> segments columns (same names). An unknown property stops the
+# load, so a new column in the library cannot be dropped silently.
+SEGMENT_COLUMNS = ("segment_id", "area_ha", "p_cane", "p_cane_radar", "p_cane_optical",
+                   "harvest_date", "date_uncertainty_days", "status", "confidence",
+                   "hv_drop_db", "coh_min", "wc_disagrees")
+WEEKLY_COLUMNS = {"week": "week_start", "harvests": "harvests", "fires_all": "fires_all",
+                  "fires_cane": "fires_cane"}
+OFFICIAL_INT = ("report", "cycle_week")
+OFFICIAL_DATE = ("cutoff", "week_start")
+OFFICIAL_REAL = ("cum_ha", "cum_cane_t", "reported_week_ha", "reported_week_cane_t", "week_ha",
+                 "week_cane_t", "diff_vs_reported_ha", "diff_vs_reported_cane_t")
+OFFICIAL_COLUMNS = OFFICIAL_DATE + OFFICIAL_INT + OFFICIAL_REAL
+# CONADESUCA mill data exists for Morelos only (library exercise 10).
+OFFICIAL = {"morelos": ("results/10/ez_weekly.csv", "results/10/ez_final.json")}
+
+
+class MissingInput(RuntimeError):
+    pass
+
+
+# --- pure functions -------------------------------------------------------------------
+
+
+def parse_date(value):
+    """'2026-01-07', '2026-01-07T00:00:00' or None/'' -> date | None."""
+    if value in (None, ""):
+        return None
+    return dt.date.fromisoformat(str(value)[:10])
+
+
+def opt_float(value):
+    if value in (None, ""):
+        return None
+    x = float(value)
+    return None if math.isnan(x) else x
+
+
+def clean_json(value):
+    """NaN/inf -> None, recursively, so the value is valid jsonb."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {str(k): clean_json(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [clean_json(v) for v in value]
+    return value
+
+
+def site_info(cfg: dict) -> dict:
+    """sites row (without the jsonb columns) from configs/<site>.yaml."""
+    lon0, lat0, lon1, lat1 = cfg["aoi"]["bbox"]
+    return {
+        "site_id": cfg["name"],
+        "name": cfg["description"],
+        "season": cfg["zafra"]["name"],
+        "bbox": (lon0, lat0, lon1, lat1),
+        "timezone": cfg["alerts"]["timezone"],
+    }
+
+
+def site_paths(cfg: dict) -> dict:
+    """Input paths relative to ZAFRA_DATA, from the site config (as the library resolves them)."""
+    site, p = cfg["name"], cfg["paths"]
+    results6 = "results/6" if site == "morelos" else f"results/6_{site}"  # script 17's rule
+    return {
+        "slim": p["slim_geojson"],
+        "series": p["timeseries"],
+        "coherence": p["coherence"],
+        "weekly": f"{p['results_dir']}/weekly.csv",
+        "firms_dir": cfg["firms"]["dir"],
+        "summaries": f"{results6}/summaries.jsonl",
+        "alert_counts": f"{results6}/alert_counts.json",
+    }
+
+
+def segment_record(props: dict) -> tuple:
+    """Slim GeoJSON feature properties -> values in SEGMENT_COLUMNS order."""
+    unknown = set(props) - set(SEGMENT_COLUMNS)
+    if unknown:
+        raise ValueError(f"segment {props.get('segment_id')}: unmapped properties {sorted(unknown)}")
+    row = dict(props)
+    row["segment_id"] = str(row["segment_id"])
+    row["harvest_date"] = parse_date(row.get("harvest_date"))
+    for k in ("area_ha", "p_cane", "p_cane_radar", "p_cane_optical", "date_uncertainty_days",
+              "hv_drop_db", "coh_min"):
+        row[k] = opt_float(row.get(k))
+    if row.get("wc_disagrees") is not None:
+        row["wc_disagrees"] = bool(row["wc_disagrees"])
+    return tuple(row.get(c) for c in SEGMENT_COLUMNS)
+
+
+def weekly_record(row: dict) -> tuple:
+    """weekly.csv row (header week, harvests, ..., fires_cane, ...) -> weekly values."""
+    missing = set(WEEKLY_COLUMNS) - set(row)
+    if missing:
+        raise ValueError(f"weekly.csv: missing columns {sorted(missing)}")
+    return (parse_date(row["week"]), int(row["harvests"]), int(row["fires_all"]),
+            int(row["fires_cane"]))
+
+
+def official_record(row: dict) -> tuple:
+    """ez_weekly.csv row -> values in OFFICIAL_COLUMNS order (blank cells -> NULL)."""
+    out = {k: parse_date(row[k]) for k in OFFICIAL_DATE}
+    out.update({k: int(row[k]) if row[k] != "" else None for k in OFFICIAL_INT})
+    out.update({k: opt_float(row[k]) for k in OFFICIAL_REAL})
+    return tuple(out[k] for k in OFFICIAL_COLUMNS)
+
+
+def firms_times(acq_date: str, acq_time: str, tz: str):
+    """FIRMS acq_date + acq_time (UTC, HHMM, leading zeros may be dropped) ->
+    (aware UTC datetime, naive local wall-clock datetime in tz)."""
+    hhmm = str(acq_time).strip().zfill(4)
+    utc = dt.datetime.combine(dt.date.fromisoformat(acq_date),
+                              dt.time(int(hhmm[:2]), int(hhmm[2:])), tzinfo=dt.timezone.utc)
+    return utc, utc.astimezone(ZoneInfo(tz)).replace(tzinfo=None)
+
+
+def firms_record(row: dict, tz: str) -> tuple:
+    """FIRMS VIIRS CSV row -> (lon, lat, datetime_utc, datetime_local, satellite, source,
+    frp, confidence)."""
+    utc, local = firms_times(row["acq_date"], row["acq_time"], tz)
+    return (float(row["longitude"]), float(row["latitude"]), utc, local, row.get("satellite"),
+            row.get("source"), opt_float(row.get("frp")), row.get("confidence"))
+
+
+def record_segment_id(rec: dict):
+    """Segment id of a summaries.jsonl record, or None for a reference-field record
+    (those are keyed by field id, have no segment_id, and are out of scope)."""
+    sid = (rec.get("facts") or {}).get("segment_id")
+    return str(sid) if sid not in (None, "") else None
+
+
+def summary_rows(rec: dict) -> list:
+    """(segment_id, lang, source, text) per language: the template text, and the LLM text
+    when the LLM rendered it (no fallback) and the verifier passed for that language."""
+    sid = record_segment_id(rec)
+    if sid is None:
+        return []
+    rows = []
+    tpl = rec.get("template") or {}
+    llm = rec.get("llm") or {}
+    use_llm = llm.get("renderer") == "llm" and not llm.get("rejected")
+    for lang in LANGS:
+        if tpl.get(lang) and ((tpl.get("verifier") or {}).get(lang) or {}).get("ok"):
+            rows.append((sid, lang, "template", tpl[lang]))
+        if use_llm and llm.get(lang) and ((llm.get("verifier") or {}).get(lang) or {}).get("ok"):
+            rows.append((sid, lang, "llm", llm[lang]))
+    return rows
+
+
+def alert_rows(rec: dict) -> list:
+    """(segment_id, code, severity, evidence json text) for each alert of a segment record."""
+    sid = record_segment_id(rec)
+    if sid is None:
+        return []
+    return [(sid, a["code"], a["severity"], json.dumps(clean_json(a.get("evidence") or {})))
+            for a in rec.get("alerts") or []]
+
+
+def format_counts(counts: dict, sites) -> str:
+    """{(table, site): n} -> aligned text table, one row per table, one column per site."""
+    w = max(len(t) for t in COUNT_TABLES)
+    lines = [f"{'table':<{w}}  " + "  ".join(f"{s:>10}" for s in sites)]
+    for t in COUNT_TABLES:
+        lines.append(f"{t:<{w}}  " + "  ".join(f"{counts.get((t, s), 0):>10,}" for s in sites))
+    return "\n".join(lines)
+
+
+# --- reading and writing --------------------------------------------------------------
+
+
+def log(msg: str) -> None:
+    print(msg, flush=True)
+
+
+def require(root: Path, rel: str) -> Path:
+    path = root / rel
+    if not path.is_file():
+        raise MissingInput(f"required input missing: {path}")
+    return path
+
+
+def optional(root: Path, rel: str, site: str, what: str):
+    path = root / rel
+    if path.is_file():
+        return path
+    log(f"[{site}] skip {what}: {path} not found")
+    return None
+
+
+def dsn() -> str:
+    user = os.environ.get("POSTGRES_USER", "zafra")
+    password = os.environ.get("POSTGRES_PASSWORD", "zafra_local_only")  # local-only default
+    host = os.environ.get("POSTGRES_HOST", "db")
+    port = os.environ.get("POSTGRES_PORT", "5432")
+    name = os.environ.get("POSTGRES_DB", "zafra")
+    return f"postgresql://{user}:{password}@{host}:{port}/{name}"
+
+
+async def copy_stage(conn, table: str, columns: dict, records: list) -> None:
+    """Temporary staging table (dropped at commit) filled with COPY."""
+    cols = ", ".join(f"{c} {t}" for c, t in columns.items())
+    await conn.execute(f"CREATE TEMP TABLE {table} ({cols}) ON COMMIT DROP")
+    await conn.copy_records_to_table(table, records=records, columns=list(columns))
+
+
+async def load_segments(conn, site: str, path: Path) -> set:
+    gj = json.loads(path.read_text())
+    crs = (gj.get("crs") or {}).get("properties", {}).get("name")
+    if crs not in (None, "urn:ogc:def:crs:OGC:1.3:CRS84", "EPSG:4326"):
+        raise ValueError(f"{path}: unexpected CRS {crs}")
+    records = [segment_record(f["properties"]) + (json.dumps(f["geometry"]),)
+               for f in gj["features"]]
+    types = {c: "text" for c in SEGMENT_COLUMNS}
+    types.update({c: "real" for c in ("area_ha", "p_cane", "p_cane_radar", "p_cane_optical",
+                                      "date_uncertainty_days", "hv_drop_db", "coh_min")})
+    types.update(harvest_date="date", wc_disagrees="boolean", geojson="text")
+    await copy_stage(conn, "stage_segments", types, records)
+    cols = ", ".join(SEGMENT_COLUMNS)
+    await conn.execute(
+        f"INSERT INTO segments (site_id, {cols}, geom) SELECT $1, {cols}, "
+        "ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON(geojson), 4326)) FROM stage_segments", site)
+    return {r[0] for r in records}
+
+
+async def load_series(conn, site: str, series: Path, coherence: Path, ids: set) -> None:
+    import pyarrow as pa
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+
+    value_set = pa.array(sorted(ids))
+    t = pq.read_table(series, columns=["field_id", "date", "orbit", "hv_db", "hh_db"])
+    t = t.filter(pc.is_in(t["field_id"], value_set=value_set))
+    rows = zip(*(t[c].to_pylist() for c in ("field_id", "date", "orbit", "hv_db", "hh_db")))
+    await conn.copy_records_to_table(
+        "segment_series",
+        records=[(site, f, d.date(), o, hv, hh) for f, d, o, hv, hh in rows],
+        columns=["site_id", "segment_id", "acquisition_date", "orbit", "hv_db", "hh_db"])
+
+    c = pq.read_table(coherence, columns=["field_id", "ref_date", "sec_date", "coh_mean", "coh_min"])
+    c = c.filter(pc.is_in(c["field_id"], value_set=value_set))
+    rows = zip(*(c[k].to_pylist() for k in ("field_id", "ref_date", "sec_date", "coh_mean", "coh_min")))
+    await conn.copy_records_to_table(
+        "segment_coherence",
+        records=[(site, f, r.date(), s.date(), m, n) for f, r, s, m, n in rows],
+        columns=["site_id", "segment_id", "ref_date", "sec_date", "coh_mean", "coh_min"])
+
+
+async def load_fires(conn, site: str, files: list, tz: str) -> None:
+    records = []
+    for path in files:
+        with path.open(newline="") as fh:
+            records += [firms_record(r, tz) for r in csv.DictReader(fh)]
+    await copy_stage(conn, "stage_fires", {
+        "lon": "double precision", "lat": "double precision", "datetime_utc": "timestamptz",
+        "datetime_local": "timestamp", "satellite": "text", "source": "text", "frp": "real",
+        "confidence": "text"}, records)
+    await conn.execute(
+        "INSERT INTO fires (site_id, geom, datetime_utc, datetime_local, satellite, source, frp,"
+        " confidence) SELECT $1, ST_SetSRID(ST_MakePoint(lon, lat), 4326), datetime_utc,"
+        " datetime_local, satellite, source, frp, confidence FROM stage_fires", site)
+    # Segments do not overlap; the lowest id is taken if a point falls on a shared edge.
+    await conn.execute(
+        "UPDATE fires f SET segment_id = (SELECT s.segment_id FROM segments s"
+        " WHERE s.site_id = f.site_id AND ST_Intersects(s.geom, f.geom)"
+        " ORDER BY s.segment_id LIMIT 1) WHERE f.site_id = $1", site)
+
+
+async def load_site(conn, root: Path, site: str) -> float:
+    t0 = time.perf_counter()
+    cfg_path = require(root, f"configs/{site}.yaml")
+    cfg = yaml.safe_load(cfg_path.read_text())
+    info, rel = site_info(cfg), site_paths(cfg)
+    slim = require(root, rel["slim"])
+    series = require(root, rel["series"])
+    coherence = require(root, rel["coherence"])
+    weekly = require(root, rel["weekly"])
+    firms = sorted((root / rel["firms_dir"]).glob("*.csv"))
+    if not firms:
+        raise MissingInput(f"required input missing: {root / rel['firms_dir']}/*.csv")
+    summaries = optional(root, rel["summaries"], site, "summaries and alerts")
+    alert_counts = optional(root, rel["alert_counts"], site, "alert counts")
+    off_weekly = off_final = None
+    if site in OFFICIAL:
+        off_weekly = require(root, OFFICIAL[site][0])
+        off_final = require(root, OFFICIAL[site][1])
+    else:
+        log(f"[{site}] skip official data: no CONADESUCA comparison for this site")
+
+    async with conn.transaction():
+        await conn.execute("DELETE FROM sites WHERE site_id = $1", site)
+        final = json.dumps(clean_json(json.loads(off_final.read_text()))) if off_final else None
+        counts = (json.dumps(clean_json(json.loads(alert_counts.read_text())))
+                  if alert_counts else None)
+        await conn.execute(
+            "INSERT INTO sites (site_id, name, season, bbox, timezone, official_final,"
+            " alert_counts) VALUES ($1, $2, $3, ST_MakeEnvelope($4, $5, $6, $7, 4326), $8,"
+            " $9::jsonb, $10::jsonb)",
+            info["site_id"], info["name"], info["season"], *info["bbox"], info["timezone"],
+            final, counts)
+
+        ids = await load_segments(conn, site, slim)
+        await load_series(conn, site, series, coherence, ids)
+        await load_fires(conn, site, firms, info["timezone"])
+
+        with weekly.open(newline="") as fh:
+            await conn.copy_records_to_table(
+                "weekly", records=[(site, *weekly_record(r)) for r in csv.DictReader(fh)],
+                columns=["site_id", *WEEKLY_COLUMNS.values()])
+        if off_weekly:
+            with off_weekly.open(newline="") as fh:
+                await conn.copy_records_to_table(
+                    "official_weekly",
+                    records=[(site, *official_record(r)) for r in csv.DictReader(fh)],
+                    columns=["site_id", *OFFICIAL_COLUMNS])
+        if summaries:
+            recs = [json.loads(line) for line in summaries.read_text().splitlines() if line.strip()]
+            seg_recs = [r for r in recs if record_segment_id(r) is not None]
+            log(f"[{site}] summaries.jsonl: {len(recs)} records, {len(seg_recs)} segments loaded,"
+                f" {len(recs) - len(seg_recs)} reference-field records skipped (out of scope)")
+            await conn.copy_records_to_table(
+                "summaries", records=[(site, *r) for rec in seg_recs for r in summary_rows(rec)],
+                columns=["site_id", "segment_id", "lang", "source", "text"])
+            await conn.executemany(
+                "INSERT INTO alerts (site_id, segment_id, code, severity, evidence)"
+                " VALUES ($1, $2, $3, $4, $5::jsonb)",
+                [(site, *a) for rec in seg_recs for a in alert_rows(rec)])
+    seconds = time.perf_counter() - t0
+    log(f"[{site}] loaded in {seconds:.1f} s")
+    return seconds
+
+
+async def apply_schema(conn, recreate: bool) -> None:
+    if recreate:
+        await conn.execute("DROP TABLE IF EXISTS " + ", ".join(APP_TABLES) + " CASCADE")
+        log("dropped app tables")
+    await conn.execute(SCHEMA.read_text())
+
+
+async def table_counts(conn, sites) -> dict:
+    counts = {}
+    for t in COUNT_TABLES:
+        for site, n in await conn.fetch(
+                f"SELECT site_id, count(*) FROM {t} WHERE site_id = ANY($1) GROUP BY site_id",
+                list(sites)):
+            counts[(t, site)] = n
+    return counts
+
+
+async def run(sites, recreate: bool) -> None:
+    import asyncpg
+
+    root = Path(os.environ.get("ZAFRA_DATA", ""))
+    if not os.environ.get("ZAFRA_DATA") or not root.is_dir():
+        raise MissingInput(f"ZAFRA_DATA is not a directory: {os.environ.get('ZAFRA_DATA')!r}")
+    conn = await asyncpg.connect(dsn())
+    try:
+        await apply_schema(conn, recreate)
+        for site in sites:
+            await load_site(conn, root, site)
+        print(format_counts(await table_counts(conn, sites), sites))
+    finally:
+        await conn.close()
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--site", required=True, choices=(*SITES, "all"))
+    ap.add_argument("--recreate-schema", action="store_true",
+                    help="drop and recreate the app tables before loading")
+    args = ap.parse_args(argv)
+    sites = SITES if args.site == "all" else (args.site,)
+    try:
+        asyncio.run(run(sites, args.recreate_schema))
+    except MissingInput as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

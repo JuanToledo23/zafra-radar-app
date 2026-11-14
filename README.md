@@ -34,28 +34,34 @@ This repo's git history is the record of the work done during the event;
 
 ## Status
 
-What exists right now is the skeleton as copied from the library:
+What exists right now:
 
 * `docker compose up` starts PostGIS, the API and the web app;
-* the database schema (`api/app/schema.sql`) is created, with empty tables;
+* the database schema (`api/app/schema.sql`) is created on API start;
+* the **loader** (`docker compose exec api python -m app.loader --site morelos|brazil|all`)
+  fills the schema from the library's result files for both sites (see [DATA.md](DATA.md));
 * the API answers `/health` (with a database round trip) and `/version` only;
 * the map shows a bundled sample of 50 Morelos segments (`web/public/sample.geojson`).
 
-No data is loaded and none of the event features exist yet.
+The API, map and the other event features do not read the loaded data yet.
 
-**Planned during the event:** loader, API, map, field detail, season dashboard, alerts,
-raster swipe, site switcher, deployment. Build order and estimates:
+**Planned during the event:** API, map, field detail, season dashboard, alerts, raster
+swipe, site switcher, deployment. Build order and estimates:
 [HACKATHON_PLAN.md](HACKATHON_PLAN.md).
 
 ## Run
 
 ```bash
-cp .env.example .env          # optional: the database and port defaults are built in
+cp .env.example .env          # set ZAFRA_DATA; the database and port defaults are built in
 docker compose up --build     # add -d --wait to run in the background until healthy
+docker compose exec api python -m app.loader --site all
 ```
 
-`ZAFRA_DATA` in `.env.example` is for the planned loader (see [DATA.md](DATA.md)); nothing
-reads it yet.
+`ZAFRA_DATA` (required) is the host path of a zafra-radar-research checkout; compose mounts
+it read-only into the api container at `/zafra-data`. The loader reloads each site in one
+transaction, so it can be run again at any time; `--recreate-schema` drops and recreates
+the app tables first (needed once when the schema changes). Unit tests for its parsing
+functions: `python -m pytest api/tests` (needs pytest and PyYAML).
 
 | Service | URL / port | Notes |
 |---|---|---|

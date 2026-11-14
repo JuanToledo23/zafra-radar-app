@@ -79,6 +79,8 @@ blank where the metadata does not state one.
 | uvicorn[standard] | 0.34.2 | `api/requirements.txt` | BSD-3-Clause |
 | sqlalchemy[asyncio] | 2.0.40 | `api/requirements.txt` | MIT |
 | asyncpg | 0.30.0 | `api/requirements.txt` | Apache License, Version 2.0 |
+| pyarrow | 26.0.0 | `api/requirements.txt` | Apache-2.0 |
+| PyYAML | 6.0.3 | installed with `uvicorn[standard]` (not pinned) | MIT |
 | maplibre-gl | 5.24.0 | `web/package.json` | BSD-3-Clause |
 | react | 19.3.1 | `web/package.json` | MIT |
 | react-dom | 19.3.1 | `web/package.json` | MIT |

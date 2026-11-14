@@ -61,14 +61,46 @@ JSON top-level keys. No inspection took more than 1 s.
 * **Sentinel-1 series:** no Brazil equivalent of `data/results/morelos/s1_series_2025_26.parquet`.
 * **Official mill data:** the CONADESUCA comparison (`results/10/`) is Morelos only.
 
-## Differences between the files and `api/app/schema.sql`
+## What the loader loads
 
-For the loader; nothing here is a defect in the files.
+`python -m app.loader` (`api/app/loader.py`) reads the paths from `configs/<site>.yaml`
+(`paths`, `firms.dir`) as the library does, and writes one transaction per site.
 
-* Harvest maps: geometry is `Polygon`, the `segments.geom` column is `MultiPolygon`;
-  `p_cane_optical` has no column.
-* `weekly.csv`: the date column is `week` (schema: `week_start`); `harvest_ha` and
-  `harvests_no_baseline_rule` have no column.
-* Time series and coherence name their id column `field_id` (schema: `segment_id`; that the
-  values match the maps' `segment_id` was not checked); coherence is per pair (`ref_date`,
-  `sec_date`), the series per `date` and `orbit`.
+| Table | Source (Morelos; Brazil equivalent from its config) | Rows loaded |
+|---|---|---|
+| `sites` | `configs/<site>.yaml`: `description` (name), `zafra.name` (season), `aoi.bbox`, `alerts.timezone`; `official_final` from `results/10/ez_final.json`; `alert_counts` from `results/6/alert_counts.json` | one per site; the jsonb columns are NULL for Brazil |
+| `segments` | slim harvest map (`paths.slim_geojson`) | every feature; Polygons wrapped with `ST_Multi`; CRS84 checked |
+| `segment_series` | `paths.timeseries` (`field_id` → `segment_id`; `date` → `acquisition_date`; `orbit`, `hv_db`, `hh_db`) | cane segments only (below) |
+| `segment_coherence` | `paths.coherence` (`ref_date`, `sec_date`, `coh_mean`, `coh_min`) | cane segments only |
+| `fires` | every `*.csv` in `firms.dir` (not recursive) | every detection in the files, including the 2024-25 season for Morelos; `segment_id` set by `ST_Intersects` with the site's segments |
+| `weekly` | `<results_dir>/weekly.csv` (`week` → `week_start`, `harvests`, `fires_all`, `fires_cane`) | every row; `harvest_ha` and `harvests_no_baseline_rule` are not loaded |
+| `official_weekly` | `results/10/ez_weekly.csv`, all columns | Morelos only |
+| `summaries` | `results/6/summaries.jsonl`: `template.<lang>` and `llm.<lang>` | segment records only; the LLM text only when the LLM rendered it and the verifier passed for that language |
+| `alerts` | `results/6/summaries.jsonl`: `alerts[]` (`code`, `severity`, `evidence`) | segment records only |
+
+**Cane rule.** A segment is cane if it is in the slim map: the library's script 15 writes
+only the polygons with `cane_pred == True` (the delivered optical gate) to that file. Every
+feature has `p_cane >= 0.5`, and `p_cane` equals `p_cane_optical`.
+
+**Ids.** The series and coherence files name the id `field_id`; its values are the maps'
+`segment_id` (`cc00042` ...). Every map segment has series and coherence rows (6,014 / 6,014
+Morelos, 12,210 / 12,210 Brazil). The same id can occur in both sites, so segments are keyed
+by (`site_id`, `segment_id`).
+
+**Units.** `hv_db` and `hh_db` are already in dB, so they are loaded unchanged. Loaded
+ranges: Morelos HV -22.7 to -2.9, HH -17.2 to +9.3; Brazil HV -23.8 to -4.0, HH -18.3 to
++4.9. Linear power would be positive and mostly below 1.
+
+**Gaps.**
+
+* Summaries and alerts exist only for the summarised polygons, not for the whole map:
+  `summaries.jsonl` has 58 Morelos records; 20 are map segments and are loaded, 38 are the
+  reference fields (keyed by field id, no segment) and are skipped, as reference fields are
+  out of scope. That gives 78 summary rows (one segment's LLM summary fell back to the
+  template) and 9 alerts.
+* Brazil has no summaries, alerts, alert counts or official data; the loader logs one line
+  for each and continues.
+* `fires.segment_id` uses point-in-polygon. The library's `fires_cane` in `weekly.csv` uses a
+  200 m buffer (`alerts.fire_buffer_m`), so the two counts differ.
+* Known difference, not investigated: weekly.csv has 1,097 Morelos fires in its window; the
+  loader's local-date count for the same window is 1,098.
