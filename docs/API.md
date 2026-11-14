@@ -36,7 +36,8 @@ max-age=3600`), layer `segments`, extent 4096, buffer 64. Feature properties:
 `segment_id`, `status`, `confidence`, `area_ha`, `p_cane`, `p_cane_radar`,
 `date_uncertainty_days`, `harvest_date` (ISO string) and `harvest_day` (integer days since
 1970-01-01, for filtering and colouring by a time slider); both are absent from the feature
-when the segment is undated. Below z12 the polygons are simplified in Web Mercator
+when the segment is undated. `alert_codes`: the segment's alert codes, sorted and joined with
+commas (`BURN_WITHOUT_HARVEST,FIRE_ACTIVE_OUTSIDE_HOURS`), absent when it has none. Below z12 the polygons are simplified in Web Mercator
 (`ST_Simplify`) with a tolerance of half a screen pixel at that zoom, taking a tile as 512
 pixels wide (38 m at z10, 19 m at z11), and polygons that collapse are left out (61 of 6,014
 Morelos and 162 of 12,210 Brazil segments at z10, none at z11); from z12 on the geometry is
@@ -59,7 +60,7 @@ curl http://localhost:8010/segments/morelos/cc00042
 | `fires` | FIRMS detections within `fire_buffer_m` (200 m) of the polygon, on the geography: `{datetime_local, sensor, source, frp, confidence, distance_m}`; `sensor` is the FIRMS satellite code (`N`, `N20`, `N21`) |
 | `fire_buffer_m` | 200, the library's `alerts.fire_buffer_m` used for `fires_cane` |
 | `summary` | `{"es": {text, source}, "en": {text, source}}`, `source` `llm` (verifier passed) preferred over `template`; `null` when the segment has no summary |
-| `alerts` | list of `{code, severity, evidence}` (only for summarised segments; DATA.md) |
+| `alerts` | list of `{code, severity, evidence}`: every cane segment where the derived alerts file was loaded (both sites), otherwise only the summarised segments (DATA.md) |
 
 ## `GET /weekly/{site}`
 
@@ -107,3 +108,30 @@ these properties:
 `segments` covers only the slim map's cane segments, so its count and total share can be
 lower than the library's `facts.segments_covering`, which counts every segment of the
 segmentation (p36: 9 cane segments covering 63 % of the field vs 23 segments, 94.5 %).
+
+## `GET /alerts/{site}`
+
+```bash
+curl 'http://localhost:8010/alerts/morelos?code=FIRE_ACTIVE_OUTSIDE_HOURS&limit=50&offset=0'
+```
+
+Alerts of the research library's rules (`zafra.alerts`) over every cane segment of the site,
+as computed by `tools/build_alerts.py` and loaded from `data/derived/alerts_<site>.json`
+(DATA.md). They are flags for review, not findings.
+
+Query parameters: `code` (optional, one alert code; empty = all), `limit` (1-500, default 50),
+`offset` (>= 0, default 0). A code the site does not know gives 400; a code that is known but
+disabled for the site (e.g. `FIRE_ACTIVE_OUTSIDE_HOURS` for Brazil) gives 200 with no rows;
+an out-of-range `limit`/`offset` gives 422; an unknown site 404.
+
+| key | meaning |
+|---|---|
+| `source` | `derived` (the derived file was loaded) or `summaries` (only the summarised segments of `summaries.jsonl`; then `codes` has no definitions) |
+| `library` | `{commit, commit_short, dirty, script, rules_module}`: the library checkout the alerts were computed with; `null` for `summaries` |
+| `layer`, `cane_segments` | the library layer the rules ran on, and its number of gated cane segments |
+| `codes` | one object per code, in the library's order: `code`, `severity` (`warning` / `info`), `enabled` (in `configs/<site>.yaml`), `params` (the rule's parameters there, e.g. `days_after`), `count` (alerts of that code on the site, independent of the `code` filter), `definition` (the library's own text from the `zafra.alerts` docstring, verbatim; bracketed names are config parameters), `definition_source` (`file:lines` in the library) |
+| `code`, `total`, `limit`, `offset` | the filter applied, the number of alerts matching it, the page |
+| `alerts` | the page: `{segment_id, code, severity, evidence, harvest_date, area_ha, centroid}`; `evidence` is the library's evidence object verbatim; `centroid` is `[lon, lat]` |
+
+Order: warnings before info, then by the segment's `harvest_date` (undated last), then
+`segment_id` and `code`. A segment can appear once per code.

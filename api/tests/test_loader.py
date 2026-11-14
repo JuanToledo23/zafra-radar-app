@@ -206,3 +206,69 @@ def test_reference_dates_none_without_window_or_ground_truth():
     props = {**REF_PROPS, "harvest_window_start": None, "harvest_window_end": None,
              "ground_truth_date": None}
     assert L.reference_dates(props, "2025-26") == []
+
+
+def _alerts_doc():
+    """Minimal alerts_<site>.json as written by tools/build_alerts.py."""
+    codes = {
+        "FIRE_ACTIVE_OUTSIDE_HOURS": {"enabled": True, "severity": "warning", "params": {},
+                                      "count": 1, "definition": "a VIIRS detection ...",
+                                      "definition_source": "src/zafra/alerts.py:13-19"},
+        "NO_BASELINE": {"enabled": True, "severity": "info", "params": {}, "count": 1,
+                        "definition": "status no_baseline",
+                        "definition_source": "src/zafra/alerts.py:28-28"},
+        "HARVEST_WITHOUT_FIRE": {"enabled": False, "severity": "info",
+                                 "params": {"days_before": 7}, "count": 0,
+                                 "definition": "a dated harvest ...",
+                                 "definition_source": "src/zafra/alerts.py:22-25"},
+    }
+    return {
+        "site": "morelos",
+        "library": {"commit": "0d6b064abc", "commit_short": "0d6b064", "dirty": False},
+        "layer": "data/results/harvest_dates_2025_26.geojson",
+        "generated_at": "2026-11-14T16:29:00-06:00",
+        "cane_segments": 2,
+        "codes": codes,
+        "alerts": [
+            {"segment_id": "cc00001", "code": "FIRE_ACTIVE_OUTSIDE_HOURS", "severity": "warning",
+             "evidence": {"datetime_local": "2026-01-02 01:30", "frp": float("nan")}},
+            {"segment_id": "cc00002", "code": "NO_BASELINE", "severity": "info",
+             "evidence": {"status_detail": "no_baseline"}},
+        ],
+    }
+
+
+def test_derived_alert_rows():
+    rows = L.derived_alert_rows(_alerts_doc(), "morelos")
+    assert [r[:3] for r in rows] == [("cc00001", "FIRE_ACTIVE_OUTSIDE_HOURS", "warning"),
+                                     ("cc00002", "NO_BASELINE", "info")]
+    assert json.loads(rows[0][3]) == {"datetime_local": "2026-01-02 01:30", "frp": None}
+
+
+def test_derived_alert_rows_rejects_other_site_code_severity_and_count():
+    with pytest.raises(ValueError, match="for site 'morelos', not 'brazil'"):
+        L.derived_alert_rows(_alerts_doc(), "brazil")
+    doc = _alerts_doc()
+    doc["alerts"][0]["code"] = "NEW_RULE"
+    with pytest.raises(ValueError, match="unknown code 'NEW_RULE'"):
+        L.derived_alert_rows(doc, "morelos")
+    doc = _alerts_doc()
+    doc["alerts"][1]["severity"] = "critical"
+    with pytest.raises(ValueError, match="severity 'critical'"):
+        L.derived_alert_rows(doc, "morelos")
+    doc = _alerts_doc()
+    doc["codes"]["NO_BASELINE"]["count"] = 5
+    with pytest.raises(ValueError, match="NO_BASELINE"):
+        L.derived_alert_rows(doc, "morelos")
+
+
+def test_alert_rules_keeps_code_order_and_library_commit():
+    rules = L.alert_rules(_alerts_doc())
+    assert [c["code"] for c in rules["codes"]] == ["FIRE_ACTIVE_OUTSIDE_HOURS", "NO_BASELINE",
+                                                   "HARVEST_WITHOUT_FIRE"]
+    assert rules["library"]["commit_short"] == "0d6b064"
+    hwf = rules["codes"][2]
+    assert hwf == {"code": "HARVEST_WITHOUT_FIRE", "severity": "info", "enabled": False,
+                   "params": {"days_before": 7}, "count": 0, "definition": "a dated harvest ...",
+                   "definition_source": "src/zafra/alerts.py:22-25"}
+    json.dumps(rules)  # serialisable as the jsonb column

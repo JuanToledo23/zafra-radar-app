@@ -34,6 +34,8 @@ services:
       POSTGRES_PORT: "5432"
       # in-container path of the research library checkout (read by app.loader)
       ZAFRA_DATA: /zafra-data
+      # in-container path of the app's derived data (alerts_<site>.json, tools/build_alerts.py)
+      ZAFRA_DERIVED: /zafra-derived
     ports:
       # host 8010 (8000 is often taken by another local API); the container listens on 8000
       - "${API_PORT:-8010}:8000"
@@ -41,6 +43,8 @@ services:
       - ./api/app:/srv/app
       # root of the zafra-radar-research checkout on the host (.env), read-only
       - ${ZAFRA_DATA:?set ZAFRA_DATA in .env to the zafra-radar-research checkout}:/zafra-data:ro
+      # derived data written by tools/build_alerts.py (git-ignored), read-only; optional input
+      - ${ZAFRA_DERIVED:-./data/derived}:/zafra-derived:ro
     depends_on:
       db:
         condition: service_healthy

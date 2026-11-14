@@ -129,3 +129,45 @@ def test_reference_brazil_is_empty():
     assert get_json("/reference/brazil") == {"type": "FeatureCollection", "site_id": "brazil",
                                              "features": []}
     assert get("/reference/nowhere")[0] == 404
+
+
+def test_alerts_morelos_counts_and_page():
+    d = get_json("/alerts/morelos")
+    codes = {c["code"]: c for c in d["codes"]}
+    assert d["source"] == "derived" and d["library"]["commit"]
+    assert set(codes) >= {"FIRE_ACTIVE_OUTSIDE_HOURS", "BURN_WITHOUT_HARVEST", "NO_BASELINE",
+                          "RADAR_OPTICAL_DISAGREE"}
+    for c in codes.values():
+        assert c["severity"] in ("warning", "info") and c["definition"]
+    assert d["total"] == sum(c["count"] for c in codes.values()) > 0
+    assert d["limit"] == 50 and len(d["alerts"]) == 50
+    first = d["alerts"][0]
+    assert {"segment_id", "code", "severity", "evidence", "harvest_date", "area_ha",
+            "centroid"} <= set(first)
+    assert len(first["centroid"]) == 2
+    ranks = [0 if a["severity"] == "warning" else 1 for a in d["alerts"]]
+    assert ranks == sorted(ranks)
+
+
+def test_alerts_code_filter_and_paging():
+    counts = {c["code"]: c["count"] for c in get_json("/alerts/morelos")["codes"]}
+    d = get_json("/alerts/morelos?code=NO_BASELINE&limit=10&offset=5")
+    assert d["code"] == "NO_BASELINE" and d["total"] == counts["NO_BASELINE"]
+    assert len(d["alerts"]) == 10 and {a["code"] for a in d["alerts"]} == {"NO_BASELINE"}
+    whole = get_json("/alerts/morelos?code=NO_BASELINE&limit=15")["alerts"]
+    assert [a["segment_id"] for a in d["alerts"]] == [a["segment_id"] for a in whole[5:15]]
+
+
+def test_alerts_unknown_code_is_400_and_unknown_site_404():
+    assert get("/alerts/morelos?code=NOT_A_CODE")[0] == 400
+    assert get("/alerts/nowhere")[0] == 404
+    assert get("/alerts/morelos?limit=0")[0] == 422
+
+
+def test_alert_codes_on_detail_and_tile():
+    page = get_json("/alerts/morelos?code=FIRE_ACTIVE_OUTSIDE_HOURS&limit=1")["alerts"][0]
+    d = get_json(f"/segments/morelos/{page['segment_id']}")
+    assert "FIRE_ACTIVE_OUTSIDE_HOURS" in {a["code"] for a in d["alerts"]}
+    x, y = tile_of(*page["centroid"], 14)
+    status, _, body = get(f"/tiles/morelos/14/{x}/{y}.pbf")
+    assert status == 200 and b"alert_codes" in body and b"FIRE_ACTIVE_OUTSIDE_HOURS" in body

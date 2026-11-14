@@ -3,11 +3,13 @@
     python -m app.loader --site morelos|brazil|all [--recreate-schema]
 
 ZAFRA_DATA is the root of a zafra-radar-research checkout (DATA.md lists every input and
-the table it feeds). Each site is reloaded inside one transaction: its row in `sites` is
+the table it feeds). ZAFRA_DERIVED, optional, is the app's derived-data directory
+(data/derived/, written by tools/build_alerts.py): where it holds alerts_<site>.json, that
+file replaces the summaries.jsonl alerts of the site. Each site is reloaded inside one transaction: its row in `sites` is
 deleted (cascading to all its data) and everything is inserted again, so running the
 loader twice gives the same row counts. A missing required file stops the load with its
-path; a missing optional input (summaries, official data, reference fields) is skipped
-with one log line.
+path; a missing optional input (summaries, official data, reference fields, derived alerts) is
+skipped with one log line.
 
 The parsing functions below are pure (no database, no files) and unit-tested in
 api/tests/; the async functions after them do the reading and writing.
@@ -51,6 +53,9 @@ OFFICIAL_DATE = ("cutoff", "week_start")
 OFFICIAL_REAL = ("cum_ha", "cum_cane_t", "reported_week_ha", "reported_week_cane_t", "week_ha",
                  "week_cane_t", "diff_vs_reported_ha", "diff_vs_reported_cane_t")
 OFFICIAL_COLUMNS = OFFICIAL_DATE + OFFICIAL_INT + OFFICIAL_REAL
+# Derived per-segment alerts: <ZAFRA_DERIVED>/alerts_<site>.json (tools/build_alerts.py).
+DERIVED_ALERTS = "alerts_{site}.json"
+SEVERITIES = ("warning", "info")  # zafra.alerts.SEVERITIES; the API orders by this
 # CONADESUCA mill data exists for Morelos only (library exercise 10).
 OFFICIAL = {"morelos": ("results/10/ez_weekly.csv", "results/10/ez_final.json")}
 
@@ -270,6 +275,44 @@ def alert_rows(rec: dict) -> list:
             for a in rec.get("alerts") or []]
 
 
+def derived_alert_rows(doc: dict, site: str) -> list:
+    """(segment_id, code, severity, evidence json text) of an alerts_<site>.json document
+    (tools/build_alerts.py). Raises if the file is for another site, a row has a code the
+    file does not describe or a severity outside SEVERITIES, or a per-code count in `codes`
+    differs from the rows."""
+    if doc.get("site") != site:
+        raise ValueError(f"derived alerts: file is for site {doc.get('site')!r}, not {site!r}")
+    codes = doc["codes"]
+    rows, per_code = [], dict.fromkeys(codes, 0)
+    for a in doc["alerts"]:
+        if a["code"] not in codes:
+            raise ValueError(f"derived alerts: {a['segment_id']}: unknown code {a['code']!r}")
+        if a["severity"] not in SEVERITIES:
+            raise ValueError(f"derived alerts: {a['segment_id']}: severity {a['severity']!r}")
+        per_code[a["code"]] += 1
+        rows.append((str(a["segment_id"]), a["code"], a["severity"],
+                     json.dumps(clean_json(a.get("evidence") or {}))))
+    wrong = {c: (v["count"], per_code[c]) for c, v in codes.items() if v["count"] != per_code[c]}
+    if wrong:
+        raise ValueError(f"derived alerts: count in file vs rows {wrong}")
+    return rows
+
+
+def alert_rules(doc: dict) -> dict:
+    """sites.alert_rules from an alerts_<site>.json document: where it came from and, per
+    code (in file order), severity, enabled, params, count, the library's definition text and
+    its source."""
+    keys = ("severity", "enabled", "params", "count", "definition", "definition_source")
+    return clean_json({
+        "library": doc.get("library"),
+        "layer": doc.get("layer"),
+        "generated_at": doc.get("generated_at"),
+        "cane_segments": doc.get("cane_segments"),
+        # a list, in the library's CODES order (jsonb does not keep object key order)
+        "codes": [{"code": c, **{k: v.get(k) for k in keys}} for c, v in doc["codes"].items()],
+    })
+
+
 def format_counts(counts: dict, sites) -> str:
     """{(table, site): n} -> aligned text table, one row per table, one column per site."""
     w = max(len(t) for t in COUNT_TABLES)
@@ -420,7 +463,27 @@ async def load_reference(conn, site: str, path: Path, season, recs: list) -> Non
         columns=["site_id", "field_id", "lang", "source", "text"])
 
 
-async def load_site(conn, root: Path, site: str) -> float:
+async def load_alerts(conn, site: str, rows: list, ids: set) -> None:
+    """Alert rows, then segments.alert_codes (sorted distinct codes) for the tiles."""
+    unknown = sorted({r[0] for r in rows} - ids)
+    if unknown:
+        raise ValueError(f"[{site}] alerts for segments not in the map: {unknown[:5]}"
+                         f" ({len(unknown)} in all)")
+    await conn.copy_records_to_table(
+        "alerts", records=[(site, *r) for r in rows],
+        columns=["site_id", "segment_id", "code", "severity", "evidence"])
+    await conn.execute(
+        "UPDATE segments s SET alert_codes = a.codes FROM (SELECT segment_id,"
+        " array_agg(DISTINCT code ORDER BY code) AS codes FROM alerts WHERE site_id = $1"
+        " GROUP BY segment_id) a WHERE s.site_id = $1 AND s.segment_id = a.segment_id", site)
+    per_code = await conn.fetch(
+        "SELECT code, count(*) AS n FROM alerts WHERE site_id = $1 GROUP BY code ORDER BY code",
+        site)
+    log(f"[{site}] alerts per code: "
+        + (", ".join(f"{r['code']} {r['n']}" for r in per_code) or "none"))
+
+
+async def load_site(conn, root: Path, site: str, derived: Path | None = None) -> float:
     t0 = time.perf_counter()
     cfg_path = require(root, f"configs/{site}.yaml")
     cfg = yaml.safe_load(cfg_path.read_text())
@@ -439,6 +502,12 @@ async def load_site(conn, root: Path, site: str) -> float:
     else:
         reference = None
         log(f"[{site}] skip reference fields: no reference_fields in configs/{site}.yaml")
+    derived_alerts = None
+    if derived is None:
+        log(f"[{site}] skip derived alerts: ZAFRA_DERIVED not set")
+    else:
+        derived_alerts = optional(derived, DERIVED_ALERTS.format(site=site), site,
+                                  "derived alerts")
     off_weekly = off_final = None
     if site in OFFICIAL:
         off_weekly = require(root, OFFICIAL[site][0])
@@ -451,12 +520,15 @@ async def load_site(conn, root: Path, site: str) -> float:
         final = json.dumps(clean_json(json.loads(off_final.read_text()))) if off_final else None
         counts = (json.dumps(clean_json(json.loads(alert_counts.read_text())))
                   if alert_counts else None)
+        doc = json.loads(derived_alerts.read_text()) if derived_alerts else None
+        alerts = derived_alert_rows(doc, site) if doc else []
+        rules = json.dumps(alert_rules(doc)) if doc else None
         await conn.execute(
             "INSERT INTO sites (site_id, name, season, bbox, timezone, official_final,"
-            " alert_counts) VALUES ($1, $2, $3, ST_MakeEnvelope($4, $5, $6, $7, 4326), $8,"
-            " $9::jsonb, $10::jsonb)",
+            " alert_counts, alert_rules) VALUES ($1, $2, $3, ST_MakeEnvelope($4, $5, $6, $7,"
+            " 4326), $8, $9::jsonb, $10::jsonb, $11::jsonb)",
             info["site_id"], info["name"], info["season"], *info["bbox"], info["timezone"],
-            final, counts)
+            final, counts, rules)
 
         ids = await load_segments(conn, site, slim)
         await load_series(conn, site, series, coherence, ids)
@@ -482,10 +554,13 @@ async def load_site(conn, root: Path, site: str) -> float:
             await conn.copy_records_to_table(
                 "summaries", records=[(site, *r) for rec in seg_recs for r in summary_rows(rec)],
                 columns=["site_id", "segment_id", "lang", "source", "text"])
-            await conn.executemany(
-                "INSERT INTO alerts (site_id, segment_id, code, severity, evidence)"
-                " VALUES ($1, $2, $3, $4, $5::jsonb)",
-                [(site, *a) for rec in seg_recs for a in alert_rows(rec)])
+            if not doc:
+                alerts = [a for rec in seg_recs for a in alert_rows(rec)]
+        if doc:
+            log(f"[{site}] alerts from {derived_alerts.name} (library"
+                f" {(doc.get('library') or {}).get('commit_short')})"
+                + (", replacing the summaries.jsonl alerts" if summaries else ""))
+        await load_alerts(conn, site, alerts, ids)
         if reference:
             await load_reference(conn, site, reference, info["season"], recs)
     seconds = time.perf_counter() - t0
@@ -516,11 +591,12 @@ async def run(sites, recreate: bool) -> None:
     root = Path(os.environ.get("ZAFRA_DATA", ""))
     if not os.environ.get("ZAFRA_DATA") or not root.is_dir():
         raise MissingInput(f"ZAFRA_DATA is not a directory: {os.environ.get('ZAFRA_DATA')!r}")
+    derived = Path(os.environ["ZAFRA_DERIVED"]) if os.environ.get("ZAFRA_DERIVED") else None
     conn = await asyncpg.connect(dsn())
     try:
         await apply_schema(conn, recreate)
         for site in sites:
-            await load_site(conn, root, site)
+            await load_site(conn, root, site, derived)
         print(format_counts(await table_counts(conn, sites), sites))
     finally:
         await conn.close()

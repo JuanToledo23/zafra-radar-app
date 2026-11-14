@@ -1,12 +1,13 @@
 """Zafra Radar API: /health, /version and the read endpoints over the tables filled by
-app.loader (/sites, /tiles, /segments, /weekly, /reference). Endpoint reference: docs/API.md."""
+app.loader (/sites, /tiles, /segments, /weekly, /reference, /alerts). Endpoint reference:
+docs/API.md."""
 
 import datetime as dt
 import json
 import math
 import re
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -133,7 +134,8 @@ WITH mvt AS (
            segment_id, status, confidence, area_ha, p_cane, p_cane_radar,
            date_uncertainty_days,
            to_char(harvest_date, 'YYYY-MM-DD') AS harvest_date,
-           (harvest_date - DATE '1970-01-01') AS harvest_day
+           (harvest_date - DATE '1970-01-01') AS harvest_day,
+           NULLIF(array_to_string(alert_codes, ','), '') AS alert_codes
     FROM segments
     WHERE site_id = :site AND geom && ST_Transform(ST_TileEnvelope(:z, :x, :y), 4326)
 )
@@ -419,3 +421,64 @@ async def reference(site: str) -> dict:
             },
         })
     return clean({"type": "FeatureCollection", "site_id": site, "features": features})
+
+
+ALERT_RULES_SQL = "SELECT alert_rules FROM sites WHERE site_id = :site"
+# Sites without a derived alerts file: the codes present in `alerts`, no definitions.
+ALERT_CODES_SQL = """
+SELECT code, min(severity) AS severity, count(*) AS count FROM alerts
+WHERE site_id = :site GROUP BY code ORDER BY code
+"""
+# Warnings first, then by harvest date (undated last), then segment id. :code NULL = all.
+ALERT_FILTER = "a.site_id = :site AND (CAST(:code AS text) IS NULL OR a.code = :code)"
+ALERT_TOTAL_SQL = f"SELECT count(*) AS n FROM alerts a WHERE {ALERT_FILTER}"
+ALERT_PAGE_SQL = f"""
+SELECT a.segment_id, a.code, a.severity, a.evidence, s.harvest_date, s.area_ha,
+       ST_X(ST_Centroid(s.geom)) AS cx, ST_Y(ST_Centroid(s.geom)) AS cy
+FROM alerts a JOIN segments s ON s.site_id = a.site_id AND s.segment_id = a.segment_id
+WHERE {ALERT_FILTER}
+ORDER BY CASE a.severity WHEN 'warning' THEN 0 WHEN 'info' THEN 1 ELSE 2 END,
+         s.harvest_date NULLS LAST, a.segment_id, a.code
+LIMIT :limit OFFSET :offset
+"""
+ALERT_PAGE_MAX = 500
+
+
+@app.get("/alerts/{site}")
+async def alerts(site: str, code: str | None = None,
+                 limit: int = Query(50, ge=1, le=ALERT_PAGE_MAX),
+                 offset: int = Query(0, ge=0)) -> dict:
+    """Per-code counts (with severity and the library's definition where the derived file
+    was loaded) and one page of alerts, warnings first, then by harvest date."""
+    code = code or None
+    async with engine.connect() as conn:
+        await require_site(conn, site)
+        rules = as_json((await fetch(conn, ALERT_RULES_SQL, site=site))[0]["alert_rules"])
+        if rules:
+            codes = rules["codes"]
+        else:
+            codes = [{"code": r["code"], "severity": r["severity"], "enabled": True,
+                      "params": None, "count": r["count"], "definition": None,
+                      "definition_source": None}
+                     for r in await fetch(conn, ALERT_CODES_SQL, site=site)]
+        if code is not None and code not in {c["code"] for c in codes}:
+            raise HTTPException(400, f"unknown alert code for {site}: {code}")
+        p = {"site": site, "code": code}
+        total = (await fetch(conn, ALERT_TOTAL_SQL, **p))[0]["n"]
+        rows = await fetch(conn, ALERT_PAGE_SQL, limit=limit, offset=offset, **p)
+    return clean({
+        "site_id": site,
+        "source": "derived" if rules else "summaries",
+        "library": rules.get("library") if rules else None,
+        "layer": rules.get("layer") if rules else None,
+        "cane_segments": rules.get("cane_segments") if rules else None,
+        "codes": codes,
+        "code": code,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "alerts": [{**real({k: r[k] for k in ("segment_id", "code", "severity", "harvest_date",
+                                              "area_ha")}),
+                    "evidence": as_json(r["evidence"]),
+                    "centroid": [r["cx"], r["cy"]]} for r in rows],
+    })

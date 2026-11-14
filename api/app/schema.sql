@@ -14,6 +14,10 @@ CREATE TABLE IF NOT EXISTS sites (
     official_final  jsonb,                     -- results/10/ez_final.json (Morelos only)
     alert_counts    jsonb                      -- results/6/alert_counts.json, where it exists
 );
+-- Alert codes of the derived per-segment table (data/derived/alerts_<site>.json, written by
+-- tools/build_alerts.py): per code its severity, enabled flag, parameters, count and the
+-- library's definition text, plus the library commit. NULL without a derived file.
+ALTER TABLE sites ADD COLUMN IF NOT EXISTS alert_rules jsonb;
 
 CREATE TABLE IF NOT EXISTS segments (
     site_id               text NOT NULL REFERENCES sites (site_id) ON DELETE CASCADE,
@@ -34,6 +38,8 @@ CREATE TABLE IF NOT EXISTS segments (
 );
 CREATE INDEX IF NOT EXISTS segments_geom_gist ON segments USING gist (geom);
 CREATE INDEX IF NOT EXISTS segments_site_date ON segments (site_id, harvest_date);
+-- Distinct codes of the segment's rows in `alerts`, sorted; set by app.loader for the tiles.
+ALTER TABLE segments ADD COLUMN IF NOT EXISTS alert_codes text[] NOT NULL DEFAULT '{}';
 
 -- NISAR GCOV backscatter per acquisition, already in dB in the library files.
 CREATE TABLE IF NOT EXISTS segment_series (
@@ -114,6 +120,8 @@ CREATE TABLE IF NOT EXISTS summaries (
     FOREIGN KEY (site_id, segment_id) REFERENCES segments (site_id, segment_id) ON DELETE CASCADE
 );
 
+-- From data/derived/alerts_<site>.json where it exists (every cane segment), otherwise from
+-- the summarised segments of results/6/summaries.jsonl.
 CREATE TABLE IF NOT EXISTS alerts (
     alert_id    bigserial PRIMARY KEY,
     site_id     text NOT NULL,
@@ -124,6 +132,7 @@ CREATE TABLE IF NOT EXISTS alerts (
     FOREIGN KEY (site_id, segment_id) REFERENCES segments (site_id, segment_id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS alerts_site_segment ON alerts (site_id, segment_id);
+CREATE INDEX IF NOT EXISTS alerts_site_code ON alerts (site_id, code);
 
 -- Reference fields: hand-traced polygons with labels and reference harvest dates
 -- (configs/<site>.yaml reference_fields; Morelos only). Properties are allow-listed by

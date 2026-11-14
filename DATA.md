@@ -33,10 +33,11 @@ JSON top-level keys. No inspection took more than 1 s.
 | Reference fields | `data/fields/fields_v2.geojson` | 19.9 KB | 38 features, Polygon, CRS84 | id, hyp, label, area_ha, harvest_window_start, harvest_window_end, orig_field |
 | Site configuration | `configs/morelos.yaml` | 4.4 KB | — | name, description, aoi, nisar, zafra, firms, gate_variant, reference_fields, paths, alerts, summary, web_rasters |
 
-**Alerts table: not on disk.** `scripts/17_field_summaries.py` evaluates the alert rules
-(`zafra.alerts.evaluate`) for every cane segment but writes only the per-code counts
+**Alerts table: not in the library.** `scripts/17_field_summaries.py` evaluates the alert
+rules (`zafra.alerts.evaluate`) for every cane segment but writes only the per-code counts
 (`results/6/alert_counts.json`) and the alerts of the 58 summarised polygons (inside
-`results/6/summaries.jsonl`). There is no per-segment alerts file for the whole layer.
+`results/6/summaries.jsonl`). The per-segment table is generated in this repository by
+`tools/build_alerts.py` (see "Derived data" below).
 
 ## Ribeirão Preto (Brazil), NISAR scenes 2026-06-22 .. 2026-10-22
 
@@ -56,8 +57,8 @@ JSON top-level keys. No inspection took more than 1 s.
 
 * **Summaries:** no `results/6_brazil/` directory (where script 17 writes for sites other
   than Morelos); script 17 has not been run for Brazil.
-* **Alerts:** not on disk (no per-segment file for either site; see above), and no Brazil
-  alert counts either.
+* **Alerts:** no per-segment file in the library for either site and no Brazil alert counts;
+  the app generates both sites' tables itself (see "Derived data" below).
 * **Sentinel-1 series:** no Brazil equivalent of `data/results/morelos/s1_series_2025_26.parquet`.
 * **Official mill data:** the CONADESUCA comparison (`results/10/`) is Morelos only.
 
@@ -76,7 +77,9 @@ JSON top-level keys. No inspection took more than 1 s.
 | `weekly` | `<results_dir>/weekly.csv` (`week` → `week_start`, `harvests`, `fires_all`, `fires_cane`) | every row; `harvest_ha` and `harvests_no_baseline_rule` are not loaded |
 | `official_weekly` | `results/10/ez_weekly.csv`, all columns | Morelos only |
 | `summaries` | `results/6/summaries.jsonl`: `template.<lang>` and `llm.<lang>` | segment records only; the LLM text only when the LLM rendered it and the verifier passed for that language |
-| `alerts` | `results/6/summaries.jsonl`: `alerts[]` (`code`, `severity`, `evidence`) | segment records only |
+| `alerts` | `data/derived/alerts_<site>.json` (below) where it exists, replacing the summaries.jsonl alerts for that site; otherwise `results/6/summaries.jsonl`: `alerts[]` (`code`, `severity`, `evidence`), segment records only | Morelos 3,517, Brazil 5,797 (derived); 9 Morelos rows from summaries.jsonl without the derived file |
+| `sites.alert_rules` | the same derived file: library commit, layer, and per code `severity`, `enabled`, `params`, `count`, `definition`, `definition_source` | NULL without a derived file |
+| `segments.alert_codes` | distinct codes of the segment's `alerts` rows, sorted | set after `alerts` is loaded; empty array without alerts |
 | `reference_fields` | `reference_fields` of `configs/<site>.yaml` (`data/fields/fields_v2.geojson`): `id` → `field_id`, `area_ha`, `hyp`, `label`, `harvest_window_start`, `harvest_window_end`, `orig_field`; the other allowed properties (`region`, `municipio`, `ground_truth_*`) in `properties` (jsonb); `facts` of the field's record in `results/6/summaries.jsonl` | every feature (38, Morelos only); Polygons wrapped with `ST_Multi`; CRS84 checked |
 | `reference_dates` | the same GeoJSON: `harvest_window_start/end` (kind `labelled_window`) and each `ground_truth_date[_suffix]` with its `ground_truth_zafra/event/source/note[_suffix]` (kind `ground_truth`) | one row per date present: 26 windows and 2 ground-truth dates |
 | `reference_summaries` | `results/6/summaries.jsonl`: `template.<lang>` and `llm.<lang>` of the reference-field records (`facts.field_id`, no `segment_id`) | same rule as `summaries`; 152 rows (38 fields × 2 languages × template and LLM) |
@@ -96,14 +99,16 @@ ranges: Morelos HV -22.7 to -2.9, HH -17.2 to +9.3; Brazil HV -23.8 to -4.0, HH 
 
 **Gaps.**
 
-* Summaries and alerts exist only for the summarised polygons, not for the whole map:
+* Summaries exist only for the summarised polygons, not for the whole map:
   `summaries.jsonl` has 58 Morelos records; 20 are map segments, 38 are the reference fields
   (keyed by field id, no segment) and go to `reference_summaries` and `reference_fields.facts`.
-  That gives 78 segment summary rows (one segment's LLM summary fell back to the template)
-  and 9 alerts; the alerts of reference-field records are not loaded.
-* Brazil has no summaries, alerts, alert counts, official data or reference fields (no
-  `reference_fields` in its config); the loader logs one line
-  for each and continues.
+  That gives 78 segment summary rows (one segment's LLM summary fell back to the template).
+  Its 9 segment alerts are replaced by the derived table, which holds the same 9 rows
+  (code, severity and evidence identical); the alerts of reference-field records are not
+  loaded.
+* Brazil has no summaries, alert counts, official data or reference fields (no
+  `reference_fields` in its config); the loader logs one line for each and continues. Its
+  alerts come from the derived table only.
 * `fires.segment_id` uses point-in-polygon. The library's `fires_cane` in `weekly.csv` uses a
   200 m buffer (`alerts.fire_buffer_m`), so the two counts differ.
 * Known difference, not investigated: weekly.csv has 1,097 Morelos fires in its window; the
@@ -130,3 +135,54 @@ of `results/6/summaries.jsonl`.
   property stops the load until it has been checked.
 * The 2024/25 ground-truth date is before the NISAR coverage, so the app computes no
   radar difference for it.
+
+## Derived data (this repository)
+
+`data/derived/` (git-ignored, like all of `data/`) holds files the app computes from the
+library. The api container mounts it read-only at `/zafra-derived` (`ZAFRA_DERIVED` in
+`.env`, default `./data/derived`); the loader treats it as an optional input.
+
+| File | Written by | Contents |
+|---|---|---|
+| `data/derived/alerts_<site>.json` | `tools/build_alerts.py` | one object: `site`, `generated_at`, `library` (`commit`, `commit_short`, `dirty`, `script`, `rules_module`), `layer`, `burn_window`, `cane_segments`, `segments_with_alert`, `segments_with_warning`, `per_code`, `codes` (per code: `enabled`, `severity`, `params`, `count`, `definition`, `definition_source`), `alerts` (one row per alert: `segment_id`, `code`, `severity`, `evidence`) |
+
+**How it is made.** `tools/build_alerts.py` runs with the library's Python environment and
+imports the library's own code: from `scripts/17_field_summaries.py` it calls
+`delivered_layer` and `facts_table` (step 1 of that script), which compute the facts
+(`zafra.summary.field_facts`) and alerts (`zafra.alerts.evaluate`) of every gated cane
+segment of the delivered layer, with the rule parameters of `configs/<site>.yaml`. No rule
+is reimplemented. The definitions are the library's text, read from the "Rules" block of the
+`zafra.alerts` docstring (`src/zafra/alerts.py:12-28`). Nothing is written inside the
+library (bytecode is off; `git status` runs without the index lock).
+
+```bash
+# from this repository's root; ZAFRA_DATA = the library checkout
+$ZAFRA_DATA/.venv/bin/python tools/build_alerts.py --site all --library "$ZAFRA_DATA"
+docker compose exec api python -m app.loader --site all
+```
+
+**Generated on 2026-11-14 against library commit `0d6b064`** (checkout clean), layer
+`data/results/harvest_dates_2025_26.geojson` (Morelos) and `data/results/brazil/harvest_dates.geojson`
+(Brazil): the unmerged layers, which `merge_summary.json` marks as delivered for both sites.
+Every alerted segment id is in the slim map.
+
+| Code | Severity | Morelos | Brazil |
+|---|---|---|---|
+| `FIRE_ACTIVE_OUTSIDE_HOURS` | warning | 337 | off (no burn window configured) |
+| `BURN_WITHOUT_HARVEST` | warning | 1,325 | 43 |
+| `HARVEST_WITHOUT_FIRE` | info | off | off |
+| `HIGH_DATE_UNCERTAINTY` | info | 0 | 0 |
+| `RADAR_OPTICAL_DISAGREE` | warning | 1,202 | 3,504 |
+| `NO_BASELINE` | info | 653 | 2,250 |
+| total alerts / segments with an alert / with a warning | | 3,517 / 2,700 / 2,361 of 6,014 | 5,797 / 5,311 / 3,526 of 12,210 |
+
+* Morelos check: the per-code totals, segments with an alert and segments with a warning
+  equal `results/6/alert_counts.json` exactly.
+* Brazil: the library's code runs on `configs/brazil.yaml` unchanged. That config disables
+  `FIRE_ACTIVE_OUTSIDE_HOURS` (`burn_window: null`, no permitted burning hours known for São
+  Paulo) and `HARVEST_WITHOUT_FIRE` (as for Morelos), so neither appears. There are no library
+  totals to compare with (script 17 has not been run for Brazil). Brazil's FIRMS files hold
+  17 detections in all, so the fire rules have little to work on.
+* `HIGH_DATE_UNCERTAINTY` fires on no segment at either site (no dated segment exceeds 9 days).
+* Regenerate after any library commit that changes the rules, the configs or the harvest
+  layers, then reload; `/alerts/{site}` reports the commit the loaded table came from.
