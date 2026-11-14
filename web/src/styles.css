@@ -134,3 +134,25 @@ html, body, #root { margin: 0; height: 100%; }
 .ref-field-row td { font-weight: 600; }
 .link { font: inherit; background: none; border: 0; padding: 0; color: #0b5cad; text-decoration: underline; cursor: pointer; }
 .back { font-size: 12px; margin-bottom: 6px; }
+.alerts-note { margin: 0 0 8px; }
+.chips { display: flex; flex-direction: column; gap: 4px; }
+.chip {
+  font: inherit; text-align: left; display: flex; flex-direction: column; gap: 2px; cursor: pointer;
+  padding: 4px 8px; background: #fff; border: 1px solid var(--line); border-radius: 6px; color: var(--ink);
+}
+.chip.on { border-color: #ff2d2d; box-shadow: inset 3px 0 0 #ff2d2d; background: #fff6f6; }
+.chip:disabled { opacity: 0.55; cursor: default; }
+.chip-head { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.chip-label { font-weight: 600; }
+.chip-count { margin-left: auto; font-variant-numeric: tabular-nums; }
+.chip-def { font-size: 11px; color: var(--muted); line-height: 1.3; }
+.alert-rows { list-style: none; padding: 0; margin: 6px 0; }
+.alert-row {
+  font: inherit; width: 100%; text-align: left; display: flex; flex-direction: column; gap: 1px;
+  background: none; border: 0; border-bottom: 1px solid var(--line); padding: 5px 2px; cursor: pointer; color: var(--ink);
+}
+.alert-row:hover { background: #f4f6f8; }
+.alert-row-head { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.alert-seg { font-weight: 600; font-variant-numeric: tabular-nums; }
+.alert-row-meta { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.more { width: 100%; }

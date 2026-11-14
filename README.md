@@ -41,8 +41,8 @@ What exists right now:
 * the **loader** (`docker compose exec api python -m app.loader --site morelos|brazil|all`)
   fills the schema from the library's result files for both sites (see [DATA.md](DATA.md));
 * the **API** serves the loaded data: `/sites`, `/tiles/{site}/{z}/{x}/{y}.pbf` (segment
-  vector tiles), `/segments/{site}/{segment_id}` and `/weekly/{site}`, besides `/health`
-  and `/version` (see [docs/API.md](docs/API.md));
+  vector tiles), `/segments/{site}/{segment_id}`, `/weekly/{site}`, `/reference/{site}` and
+  `/alerts/{site}`, besides `/health` and `/version` (see [docs/API.md](docs/API.md));
 * the **map** draws the segment vector tiles from the API, with a site select (Morelos /
   Brazil) that refits the map, a weekly time slider with play/pause over the site's harvest
   dates (segments harvested by the slider date coloured by harvest date, the rest standing
@@ -68,8 +68,14 @@ What exists right now:
   one opens a card with its reference dates, the radar date ± uncertainty of the field and
   of each overlapping segment, the difference in days, the summary (EN / ES) and links to
   the segments' detail. "Find field" flies to a reference field (p36) or a segment (cc20456).
+* **alerts**: `tools/build_alerts.py` runs the library's own alert rules over every cane
+  segment of both sites into `data/derived/` (DATA.md); the loader loads them, and
+  `/alerts/{site}` serves per-code counts with the library's definitions and pages of alerts.
+  "Alerts" in the header lists them in the side panel: a fixed note that they are flags for
+  review, code chips that filter the list and outline the matching segments on the map, 50
+  rows at a time; clicking a row flies to the segment and opens its detail.
 
-The other event features (alerts view, raster swipe, deployment) do not exist yet.
+The other event features (raster swipe, deployment) do not exist yet.
 
 **Planned during the event:** API, map, field detail, season dashboard, alerts, raster
 swipe, site switcher, deployment. Build order and estimates:

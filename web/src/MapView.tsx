@@ -9,6 +9,7 @@ import {
   probeBasemap,
   type BasemapState,
 } from "./basemap";
+import { ALERT_OUTLINE_COLOR } from "./alerts";
 import type { ReferenceCollection } from "./reference";
 import {
   DATED_OPACITY,
@@ -40,8 +41,9 @@ const STYLE: StyleSpecification = {
 const SOURCE = "segments";
 const FILL = "segments-fill";
 const LINE = "segments-line";
+const ALERT = "segments-alert";
 const SELECTED = "segments-selected";
-const LAYERS = [FILL, LINE, SELECTED];
+const LAYERS = [FILL, LINE, ALERT, SELECTED];
 const NONE = ["==", ["get", "segment_id"], ""] as maplibregl.FilterSpecification;
 const REF_SOURCE = "reference";
 const REF_FILL = "reference-fill"; // transparent; only for "is the click inside a field"
@@ -79,6 +81,14 @@ function addSegmentLayers(map: maplibregl.Map, tiles: string) {
     } as maplibregl.LineLayerSpecification["paint"],
   });
   map.addLayer({
+    id: ALERT,
+    type: "line",
+    source: SOURCE,
+    "source-layer": "segments",
+    filter: NONE,
+    paint: { "line-color": ALERT_OUTLINE_COLOR, "line-width": 2.5 },
+  });
+  map.addLayer({
     id: SELECTED,
     type: "line",
     source: SOURCE,
@@ -86,6 +96,12 @@ function addSegmentLayers(map: maplibregl.Map, tiles: string) {
     filter: NONE,
     paint: { "line-color": "#00e5ff", "line-width": 3 },
   });
+}
+
+/** Segments whose `alert_codes` tile property (comma-separated, docs/API.md) holds `code`. */
+function alertFilter(code: string | null): maplibregl.FilterSpecification {
+  if (!code) return NONE;
+  return ["in", `,${code},`, ["concat", ",", ["coalesce", ["get", "alert_codes"], ""], ","]];
 }
 
 /** Reference outlines above the segments, ids only (the card reads the full collection). */
@@ -140,12 +156,15 @@ type Props = {
   zoomTo: { bbox: [number, number, number, number] } | null;
   reference: ReferenceCollection | null;
   referenceOn: boolean;
+  alertCode: string | null;
   selected: Selection;
   onSelect: (s: Selection) => void;
   onBasemap: (s: BasemapState) => void;
 };
 
-export default function MapView({ site, day, zoomTo, reference, referenceOn, selected, onSelect, onBasemap }: Props) {
+export default function MapView({
+  site, day, zoomTo, reference, referenceOn, alertCode, selected, onSelect, onBasemap,
+}: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -281,6 +300,13 @@ export default function MapView({ site, day, zoomTo, reference, referenceOn, sel
     if (map.getLayer(REF_SELECTED))
       map.setFilter(REF_SELECTED, selected?.kind === "reference" ? ["==", ["get", "field_id"], selected.id] : REF_NONE);
   }, [loaded, selected, site, reference, referenceOn]);
+
+  // Outline of the segments carrying the alert code picked in the alerts list.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!loaded || !map || !map.getLayer(ALERT)) return;
+    map.setFilter(ALERT, alertFilter(alertCode));
+  }, [loaded, site, alertCode]);
 
   // "Zoom to field" from the side panel.
   useEffect(() => {

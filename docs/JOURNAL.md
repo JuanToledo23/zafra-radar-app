@@ -67,3 +67,15 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
 - `/reference/{site}` with dates, facts, summary and overlapping cane segments (p36: 9 covering 63 %);
   web: outline toggle with id labels, reference card, "Find field" box.
 - 6 new loader tests and 2 HTTP tests; 29 pass. Type-check and build pass; checked headless in Chrome.
+
+## 2026-11-14 16:37 CST
+
+- `tools/build_alerts.py` runs the library's alert rules (script 17's `facts_table`, `zafra.alerts`)
+  at `0d6b064` over every cane segment into `data/derived/alerts_<site>.json`; Morelos per-code
+  totals equal `results/6/alert_counts.json` (337 / 1,325 / 0 / 0 / 1,202 / 653).
+- Brazil runs on its config unchanged: 5,797 alerts; `FIRE_ACTIVE_OUTSIDE_HOURS` is off there (no
+  burn window) and `HARVEST_WITHOUT_FIRE` is off on both sites.
+- Loader: derived alerts replace the summaries.jsonl ones, `segments.alert_codes` feeds the tiles;
+  two runs give identical counts (3,517 / 5,797). New `/alerts/{site}` with code filter and paging.
+- Web: "Alerts" list with code chips, map outline of the selected code, Load more, row opens the
+  field detail. 7 new tests; 36 pass. Type-check and build pass; checked headless in Chrome.

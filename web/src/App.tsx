@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { AlertRow } from "./alerts";
 import FindField from "./FindField";
 import MapView from "./MapView";
 import SeasonPanel, { type Weekly } from "./SeasonPanel";
@@ -36,6 +37,7 @@ export type Selection =
 export const SITE_LABELS: Record<string, string> = { morelos: "Morelos", brazil: "Brazil" };
 const DEFAULT_SITE = "morelos";
 const PLAY_STEP_MS = 600;
+const ALERT_ZOOM_DEG = 0.002; // half-size of the box flown to around an alert's segment centroid
 
 export default function App() {
   const [selected, setSelected] = useState<Selection>(null);
@@ -52,6 +54,8 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   // "Zoom to field": a new object each click, so the same bbox can be flown to again.
   const [zoomTo, setZoomTo] = useState<{ bbox: [number, number, number, number] } | null>(null);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [alertCode, setAlertCode] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/health")
@@ -138,6 +142,7 @@ export default function App() {
             value={siteId}
             onChange={(e) => {
               setSelected(null);
+              setAlertCode(null);
               setSiteId(e.target.value);
             }}
           >
@@ -167,6 +172,19 @@ export default function App() {
           >
             Reference fields
           </button>
+          <button
+            type="button"
+            className={`season-toggle${alertsOpen ? " on" : ""}`}
+            aria-pressed={alertsOpen}
+            data-testid="alerts-toggle"
+            onClick={() => {
+              if (!alertsOpen) setSelected(null); // open on the list, not on a field
+              else setAlertCode(null);
+              setAlertsOpen(!alertsOpen);
+            }}
+          >
+            Alerts
+          </button>
           <FindField
             siteId={siteId}
             reference={reference}
@@ -194,6 +212,7 @@ export default function App() {
             zoomTo={zoomTo}
             reference={reference}
             referenceOn={referenceOn}
+            alertCode={alertsOpen ? alertCode : null}
             selected={selected}
             onSelect={setSelected}
             onBasemap={setBasemap}
@@ -217,6 +236,14 @@ export default function App() {
           referenceOn={referenceOn}
           onZoom={(bbox) => setZoomTo({ bbox })}
           onSelect={setSelected}
+          alertsOpen={alertsOpen}
+          alertCode={alertCode}
+          onAlertCode={setAlertCode}
+          onOpenAlert={(a: AlertRow) => {
+            const [x, y] = a.centroid;
+            setSelected({ kind: "segment", id: a.segment_id });
+            setZoomTo({ bbox: [x - ALERT_ZOOM_DEG, y - ALERT_ZOOM_DEG, x + ALERT_ZOOM_DEG, y + ALERT_ZOOM_DEG] });
+          }}
         />
         {day !== null && (
           <TimeSlider

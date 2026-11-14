@@ -66,6 +66,9 @@ URL is one those documents do not give.
   the event, `0d6b064` (2026-11-14), which adds the comparison of detected harvest with
   official CONADESUCA mill reports (analysis only; it does not touch `product/`). The copy
   was taken from a checkout at `0d6b064`, where `product/` is byte-identical to `v0.1.0`.
+  The alerts are computed by the library's own rules (`zafra.alerts`, called through
+  `scripts/17_field_summaries.py`) at `0d6b064`, run unchanged by `tools/build_alerts.py`;
+  the definitions shown in the app are the library's text.
 
 ## Third-party software
 
