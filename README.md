@@ -40,10 +40,12 @@ What exists right now:
 * the database schema (`api/app/schema.sql`) is created on API start;
 * the **loader** (`docker compose exec api python -m app.loader --site morelos|brazil|all`)
   fills the schema from the library's result files for both sites (see [DATA.md](DATA.md));
-* the API answers `/health` (with a database round trip) and `/version` only;
+* the **API** serves the loaded data: `/sites`, `/tiles/{site}/{z}/{x}/{y}.pbf` (segment
+  vector tiles), `/segments/{site}/{segment_id}` and `/weekly/{site}`, besides `/health`
+  and `/version` (see [docs/API.md](docs/API.md));
 * the map shows a bundled sample of 50 Morelos segments (`web/public/sample.geojson`).
 
-The API, map and the other event features do not read the loaded data yet.
+The map and the other event features do not read the API yet.
 
 **Planned during the event:** API, map, field detail, season dashboard, alerts, raster
 swipe, site switcher, deployment. Build order and estimates:
@@ -61,7 +63,8 @@ docker compose exec api python -m app.loader --site all
 it read-only into the api container at `/zafra-data`. The loader reloads each site in one
 transaction, so it can be run again at any time; `--recreate-schema` drops and recreates
 the app tables first (needed once when the schema changes). Unit tests for its parsing
-functions: `python -m pytest api/tests` (needs pytest and PyYAML).
+functions: `python -m pytest api/tests` (needs pytest and PyYAML); the same command runs
+the HTTP tests of the API (`api/tests/test_api.py`), skipped when the API is not reachable.
 
 | Service | URL / port | Notes |
 |---|---|---|
@@ -110,6 +113,7 @@ starts and the map renders with no network:
 ## Documentation
 
 * [DATA.md](DATA.md): the input files read from the research library (`ZAFRA_DATA`).
+* [docs/API.md](docs/API.md): the API endpoints and their response keys.
 * [docs/RESOURCES.md](docs/RESOURCES.md): data, resources and software used.
 * [AI_USAGE.md](AI_USAGE.md): how AI was used, in development and in the product.
 * [docs/JOURNAL.md](docs/JOURNAL.md): build log of the event.

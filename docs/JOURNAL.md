@@ -22,3 +22,11 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
 - Loaded both sites twice with identical row counts (Morelos 3.5-4.2 s, Brazil 4.6-5.2 s);
   Morelos matches the library's 6,014 segments, 9,943 ha, 3,976 dated segments, 6,867 ha.
 - 13 unit tests for the parsing functions pass.
+
+## 2026-11-14 14:40 CST
+
+- Added the read API in `api/app/main.py`: `/sites`, `/tiles/{site}/{z}/{x}/{y}.pbf`
+  (ST_AsMVT, layer `segments`), `/segments/{site}/{segment_id}`, `/weekly/{site}`; docs/API.md.
+- Cumulative curves recomputed from the loaded tables with the definition of the library's
+  `scripts/20_official_data.py`; 50 % reached on 2026-02-07 (detected) and 2026-02-14 (official).
+- 8 HTTP tests (`api/tests/test_api.py`) and the 13 loader tests pass.
