@@ -122,10 +122,12 @@ async def sites() -> list[dict]:
 
 
 # `geom && <4326 envelope>` lets the planner use segments_geom_gist; the geometry is only
-# transformed to web mercator for the segments that pass it.
-TILE_SQL = """
+# transformed to web mercator for the segments that pass it. Below SIMPLIFY_BELOW_ZOOM it is
+# also simplified there by :tol metres; a polygon that collapses gives NULL or empty, which
+# ST_AsMVTGeom turns into NULL, so it is dropped.
+TILE_SQL_TEMPLATE = """
 WITH mvt AS (
-    SELECT ST_AsMVTGeom(ST_Transform(geom, 3857), ST_TileEnvelope(:z, :x, :y), 4096, 64, true)
+    SELECT ST_AsMVTGeom({geom}, ST_TileEnvelope(:z, :x, :y), 4096, 64, true)
                AS geom,
            segment_id, status, confidence, area_ha, p_cane, p_cane_radar,
            date_uncertainty_days,
@@ -136,6 +138,16 @@ WITH mvt AS (
 )
 SELECT ST_AsMVT(mvt, 'segments', 4096, 'geom') FROM mvt WHERE geom IS NOT NULL
 """
+TILE_SQL = TILE_SQL_TEMPLATE.format(geom="ST_Transform(geom, 3857)")
+TILE_SQL_SIMPLIFIED = TILE_SQL_TEMPLATE.format(geom="ST_Simplify(ST_Transform(geom, 3857), :tol)")
+SIMPLIFY_BELOW_ZOOM = 12
+WORLD_M = 2 * math.pi * 6378137  # web mercator world width, metres
+
+
+def simplify_tolerance(z: int) -> float:
+    """Half a screen pixel in web mercator metres at tile zoom z (38 m at z10). MapLibre
+    draws a vector tile over 512 pixels, so one pixel is WORLD_M / (512 * 2**z)."""
+    return WORLD_M / (512 * 2 ** z) / 2
 
 
 def tile_coords(z: str, x: str, y: str) -> tuple[int, int, int]:
@@ -154,8 +166,13 @@ async def tile(site: str, z: str, x: str, y: str) -> Response:
     zi, xi, yi = tile_coords(z, x, y)
     async with engine.connect() as conn:
         await require_site(conn, site)
-        data = (await conn.execute(text(TILE_SQL), {"site": site, "z": zi, "x": xi, "y": yi})
-                ).scalar()
+        params = {"site": site, "z": zi, "x": xi, "y": yi}
+        if zi < SIMPLIFY_BELOW_ZOOM:
+            sql = TILE_SQL_SIMPLIFIED
+            params["tol"] = simplify_tolerance(zi)
+        else:
+            sql = TILE_SQL
+        data = (await conn.execute(text(sql), params)).scalar()
     if not data:
         return Response(status_code=204)
     return Response(content=bytes(data), media_type="application/vnd.mapbox-vector-tile",

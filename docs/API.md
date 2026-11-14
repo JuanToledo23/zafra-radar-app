@@ -36,7 +36,11 @@ max-age=3600`), layer `segments`, extent 4096, buffer 64. Feature properties:
 `segment_id`, `status`, `confidence`, `area_ha`, `p_cane`, `p_cane_radar`,
 `date_uncertainty_days`, `harvest_date` (ISO string) and `harvest_day` (integer days since
 1970-01-01, for filtering and colouring by a time slider); both are absent from the feature
-when the segment is undated. 204 when the tile has no segment; 400 for non-integer or
+when the segment is undated. Below z12 the polygons are simplified in Web Mercator
+(`ST_Simplify`) with a tolerance of half a screen pixel at that zoom, taking a tile as 512
+pixels wide (38 m at z10, 19 m at z11), and polygons that collapse are left out (61 of 6,014
+Morelos and 162 of 12,210 Brazil segments at z10, none at z11); from z12 on the geometry is
+not simplified. 204 when the tile has no segment; 400 for non-integer or
 out-of-range `z`/`x`/`y` (`0 <= z <= 22`); 404 for an unknown site.
 
 ## `GET /segments/{site}/{segment_id}`
