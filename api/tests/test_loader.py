@@ -144,3 +144,65 @@ def test_format_counts():
     text = L.format_counts({("segments", "morelos"): 6014}, ("morelos", "brazil"))
     seg = next(line for line in text.splitlines() if line.startswith("segments "))
     assert seg.split() == ["segments", "6,014", "0"]
+
+
+# Reference fields: synthetic properties (not the library's values).
+REF_PROPS = {"id": "p99", "hyp": "cana", "label": "cana", "area_ha": 1.5,
+             "harvest_window_start": "2026-01-10", "harvest_window_end": "2026-01-15",
+             "orig_field": None}
+
+
+def test_record_field_id_only_for_reference_records():
+    rec = _record()
+    assert L.record_field_id(rec) is None
+    rec["facts"] = {"segment_id": None, "field_id": "p99"}
+    assert L.record_field_id(rec) == "p99"
+    rec["facts"] = {"segment_id": None, "field_id": None}
+    assert L.record_field_id(rec) is None
+
+
+def test_reference_summary_rows():
+    rec = _record()
+    assert L.reference_summary_rows(rec) == []
+    rec["facts"] = {"segment_id": None, "field_id": "p99"}
+    rows = L.reference_summary_rows(rec)
+    assert ("p99", "es", "template", "t es") in rows and ("p99", "en", "llm", "l en") in rows
+    assert len(rows) == 4
+
+
+def test_reference_record_columns_and_extra():
+    values, extra = L.reference_record({**REF_PROPS, "municipio": "X",
+                                        "ground_truth_date": "2025-03-01"})
+    row = dict(zip(L.REFERENCE_COLUMNS, values))
+    assert row["field_id"] == "p99"
+    assert row["harvest_window_start"] == dt.date(2026, 1, 10)
+    assert row["area_ha"] == 1.5
+    assert extra == {"municipio": "X", "ground_truth_date": "2025-03-01"}
+
+
+def test_reference_record_rejects_property_outside_allow_list():
+    with pytest.raises(ValueError, match="grower_name"):
+        L.reference_record({**REF_PROPS, "grower_name": "someone"})
+    with pytest.raises(ValueError, match="ground_truth_owner"):
+        L.reference_record({**REF_PROPS, "ground_truth_owner": "someone"})
+
+
+def test_reference_dates_window_and_ground_truth_suffixes():
+    props = {**REF_PROPS, "ground_truth_date": "2025-03-01", "ground_truth_zafra": "2024/25",
+             "ground_truth_event": "e1", "ground_truth_source": "s1", "ground_truth_note": "n1",
+             "ground_truth_date_2026": "2026-02-02", "ground_truth_event_2026": "e2"}
+    rows = L.reference_dates(props, "2025-26")
+    assert rows == [
+        ("harvest_window", "labelled_window", dt.date(2026, 1, 10), dt.date(2026, 1, 15),
+         "2025-26", None, None, None),
+        ("ground_truth_date", "ground_truth", dt.date(2025, 3, 1), dt.date(2025, 3, 1),
+         "2024/25", "e1", "s1", "n1"),
+        ("ground_truth_date_2026", "ground_truth", dt.date(2026, 2, 2), dt.date(2026, 2, 2),
+         None, "e2", None, None),
+    ]
+
+
+def test_reference_dates_none_without_window_or_ground_truth():
+    props = {**REF_PROPS, "harvest_window_start": None, "harvest_window_end": None,
+             "ground_truth_date": None}
+    assert L.reference_dates(props, "2025-26") == []

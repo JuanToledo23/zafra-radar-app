@@ -81,3 +81,29 @@ area (9,565 ha); detected % = cumulative dated ha / all dated ha (6,867 ha). The
 writes these per-week values only into a Markdown table (`results/10/official_comparison.md`,
 2 decimals), so no file is loaded for them; the recomputation matches that table in all 24
 weeks.
+
+## `GET /reference/{site}`
+
+```bash
+curl http://localhost:8010/reference/morelos
+```
+
+GeoJSON FeatureCollection of the site's reference fields (hand-traced polygons with labels
+and reference harvest dates; DATA.md), in natural id order (`p2a`, `p2b`, ..., `p10`). A site
+without reference fields (Brazil) gives `{"type": "FeatureCollection", "site_id": ...,
+"features": []}`. Each feature has `id` = field id, a MultiPolygon geometry (EPSG:4326) and
+these properties:
+
+| key | meaning |
+|---|---|
+| `field_id`, `area_ha`, `hyp`, `label`, `harvest_window_start`, `harvest_window_end`, `orig_field` | GeoJSON properties: tracing hypothesis, NDVI label (`cana`, `no_cana`, `dudoso`), labelled NDVI harvest window |
+| other properties | the remaining GeoJSON properties as in the file (`region`, `municipio`, `ground_truth_*`), only those on the loader's allow-list; none holds a personal name |
+| `bbox` | `[west, south, east, north]`, for fly-to |
+| `reference_dates` | one object per reference date: `property` (`harvest_window` or the `ground_truth_date[_suffix]` it comes from), `kind` (`labelled_window` = NDVI harvest window; `ground_truth` = reported ground-truth date), `date_start`, `date_end` (equal for a single date), `season`, and `event`, `source`, `note` verbatim from the file (`null` where absent) |
+| `facts` | the facts of the field's record in `results/6/summaries.jsonl` (the library's field-level outputs: `harvest_date`, `date_uncertainty_days`, `cane_confidence`, `segments_covering`, ...); `null` without a record |
+| `summary` | as in `/segments`: `{"es": {text, source}, "en": {text, source}}`, `null` without a record |
+| `segments` | map segments overlapping the field: `{segment_id, overlap_share, harvest_date, date_uncertainty_days}`, largest `overlap_share` first; `overlap_share` = intersection area / field area on the geography (4 decimals); segments that only touch the field are left out |
+
+`segments` covers only the slim map's cane segments, so its count and total share can be
+lower than the library's `facts.segments_covering`, which counts every segment of the
+segmentation (p36: 9 cane segments covering 63 % of the field vs 23 segments, 94.5 %).

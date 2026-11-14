@@ -107,3 +107,25 @@ def test_weekly_brazil_has_no_official():
     d = get_json("/weekly/brazil")
     assert d["weeks"]
     assert d["official"] is None
+
+
+def test_reference_morelos_has_38_fields_with_p36():
+    d = get_json("/reference/morelos")
+    assert d["type"] == "FeatureCollection"
+    assert len(d["features"]) == 38
+    by_id = {f["properties"]["field_id"]: f for f in d["features"]}
+    p36 = by_id["p36"]
+    assert p36["geometry"]["type"] == "MultiPolygon"
+    props = p36["properties"]
+    assert {"reference_dates", "summary", "segments", "facts", "bbox"} <= set(props)
+    assert {r["kind"] for r in props["reference_dates"]} == {"labelled_window", "ground_truth"}
+    assert props["summary"]["en"]["text"] and props["summary"]["es"]["text"]
+    shares = [s["overlap_share"] for s in props["segments"]]
+    assert shares and shares == sorted(shares, reverse=True) and 0 < sum(shares) <= 1
+    assert {"segment_id", "harvest_date", "date_uncertainty_days"} <= set(props["segments"][0])
+
+
+def test_reference_brazil_is_empty():
+    assert get_json("/reference/brazil") == {"type": "FeatureCollection", "site_id": "brazil",
+                                             "features": []}
+    assert get("/reference/nowhere")[0] == 404

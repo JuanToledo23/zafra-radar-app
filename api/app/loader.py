@@ -6,7 +6,8 @@ ZAFRA_DATA is the root of a zafra-radar-research checkout (DATA.md lists every i
 the table it feeds). Each site is reloaded inside one transaction: its row in `sites` is
 deleted (cascading to all its data) and everything is inserted again, so running the
 loader twice gives the same row counts. A missing required file stops the load with its
-path; a missing optional input (summaries, official data) is skipped with one log line.
+path; a missing optional input (summaries, official data, reference fields) is skipped
+with one log line.
 
 The parsing functions below are pure (no database, no files) and unit-tested in
 api/tests/; the async functions after them do the reading and writing.
@@ -19,6 +20,7 @@ import datetime as dt
 import json
 import math
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -30,10 +32,12 @@ SITES = ("morelos", "brazil")
 LANGS = ("es", "en")
 SCHEMA = Path(__file__).with_name("schema.sql")
 # Dropped by --recreate-schema (children first; CASCADE covers anything left over).
-APP_TABLES = ("alerts", "summaries", "official_weekly", "weekly", "fires", "segment_coherence",
+APP_TABLES = ("reference_summaries", "reference_dates", "reference_fields", "alerts",
+              "summaries", "official_weekly", "weekly", "fires", "segment_coherence",
               "segment_series", "segments", "sites")
 COUNT_TABLES = ("sites", "segments", "segment_series", "segment_coherence", "fires", "weekly",
-                "official_weekly", "summaries", "alerts")
+                "official_weekly", "summaries", "alerts", "reference_fields", "reference_dates",
+                "reference_summaries")
 
 # Slim GeoJSON properties -> segments columns (same names). An unknown property stops the
 # load, so a new column in the library cannot be dropped silently.
@@ -49,6 +53,15 @@ OFFICIAL_REAL = ("cum_ha", "cum_cane_t", "reported_week_ha", "reported_week_cane
 OFFICIAL_COLUMNS = OFFICIAL_DATE + OFFICIAL_INT + OFFICIAL_REAL
 # CONADESUCA mill data exists for Morelos only (library exercise 10).
 OFFICIAL = {"morelos": ("results/10/ez_weekly.csv", "results/10/ez_final.json")}
+
+# Reference-field GeoJSON properties. Allow-listed rather than passed through: a property
+# outside this list stops the load, so a new one (e.g. a grower's or owner's name) is reviewed
+# before the API can serve it. None of the current properties holds a personal name.
+REFERENCE_COLUMNS = ("field_id", "area_ha", "hyp", "label", "harvest_window_start",
+                     "harvest_window_end", "orig_field")
+REFERENCE_EXTRA = ("region", "municipio")
+# ground_truth_<part>[_<suffix>]: one ground-truth date per suffix (none, _2026, ...).
+GROUND_TRUTH = re.compile(r"ground_truth_(date|zafra|event|source|note)(_[0-9A-Za-z]+)?")
 
 
 class MissingInput(RuntimeError):
@@ -107,6 +120,7 @@ def site_paths(cfg: dict) -> dict:
         "firms_dir": cfg["firms"]["dir"],
         "summaries": f"{results6}/summaries.jsonl",
         "alert_counts": f"{results6}/alert_counts.json",
+        "reference_fields": cfg.get("reference_fields"),  # None where the site has none
     }
 
 
@@ -162,26 +176,88 @@ def firms_record(row: dict, tz: str) -> tuple:
 
 def record_segment_id(rec: dict):
     """Segment id of a summaries.jsonl record, or None for a reference-field record
-    (those are keyed by field id, have no segment_id, and are out of scope)."""
+    (those are keyed by field id and have no segment_id)."""
     sid = (rec.get("facts") or {}).get("segment_id")
     return str(sid) if sid not in (None, "") else None
 
 
-def summary_rows(rec: dict) -> list:
-    """(segment_id, lang, source, text) per language: the template text, and the LLM text
-    when the LLM rendered it (no fallback) and the verifier passed for that language."""
-    sid = record_segment_id(rec)
-    if sid is None:
-        return []
+def record_field_id(rec: dict):
+    """Reference-field id of a summaries.jsonl record (facts.field_id, with no segment_id),
+    or None for a segment record."""
+    facts = rec.get("facts") or {}
+    if record_segment_id(rec) is not None or facts.get("field_id") in (None, ""):
+        return None
+    return str(facts["field_id"])
+
+
+def summary_texts(rec: dict) -> list:
+    """(lang, source, text) per language: the template text, and the LLM text when the LLM
+    rendered it (no fallback) and the verifier passed for that language."""
     rows = []
     tpl = rec.get("template") or {}
     llm = rec.get("llm") or {}
     use_llm = llm.get("renderer") == "llm" and not llm.get("rejected")
     for lang in LANGS:
         if tpl.get(lang) and ((tpl.get("verifier") or {}).get(lang) or {}).get("ok"):
-            rows.append((sid, lang, "template", tpl[lang]))
+            rows.append((lang, "template", tpl[lang]))
         if use_llm and llm.get(lang) and ((llm.get("verifier") or {}).get(lang) or {}).get("ok"):
-            rows.append((sid, lang, "llm", llm[lang]))
+            rows.append((lang, "llm", llm[lang]))
+    return rows
+
+
+def summary_rows(rec: dict) -> list:
+    """(segment_id, lang, source, text) of a segment record (summary_texts); [] for a
+    reference-field record."""
+    sid = record_segment_id(rec)
+    return [] if sid is None else [(sid, *t) for t in summary_texts(rec)]
+
+
+def reference_summary_rows(rec: dict) -> list:
+    """(field_id, lang, source, text) of a reference-field record; [] for a segment record."""
+    fid = record_field_id(rec)
+    return [] if fid is None else [(fid, *t) for t in summary_texts(rec)]
+
+
+def reference_record(props: dict) -> tuple:
+    """Reference GeoJSON properties -> (values in REFERENCE_COLUMNS order, other allowed
+    properties as a dict). Raises on a property outside the allow-list (see
+    REFERENCE_COLUMNS)."""
+    props = {("field_id" if k == "id" else k): v for k, v in props.items()}
+    unknown = sorted(k for k in props if k not in REFERENCE_COLUMNS
+                     and k not in REFERENCE_EXTRA and not GROUND_TRUTH.fullmatch(k))
+    if unknown:
+        raise ValueError(f"reference field {props.get('field_id')}: properties not in the "
+                         f"allow-list {unknown}; check them for personal names, then add them")
+    row = dict(props)
+    row["field_id"] = str(row["field_id"])
+    row["area_ha"] = opt_float(row.get("area_ha"))
+    for k in ("harvest_window_start", "harvest_window_end"):
+        row[k] = parse_date(row.get(k))
+    extra = {k: clean_json(v) for k, v in props.items() if k not in REFERENCE_COLUMNS}
+    return tuple(row.get(c) for c in REFERENCE_COLUMNS), extra
+
+
+def reference_dates(props: dict, season) -> list:
+    """Reference dates of one field from its GeoJSON properties, as (property, kind,
+    date_start, date_end, season, event, source, note):
+      * the labelled NDVI harvest window (harvest_window_start/end), of the site's `season`;
+      * one 'ground_truth' row per ground_truth_date[_suffix] with a date, with its
+        ground_truth_zafra / event / source / note of the same suffix, verbatim."""
+    rows = []
+    start = parse_date(props.get("harvest_window_start"))
+    end = parse_date(props.get("harvest_window_end"))
+    if start or end:
+        rows.append(("harvest_window", "labelled_window", start or end, end or start, season,
+                     None, None, None))
+    suffixes = sorted(m.group(2) or "" for k in props
+                      if (m := GROUND_TRUTH.fullmatch(k)) and m.group(1) == "date")
+    for sfx in suffixes:
+        day = parse_date(props.get(f"ground_truth_date{sfx}"))
+        if day is None:
+            continue
+        part = {p: props.get(f"ground_truth_{p}{sfx}") for p in ("zafra", "event", "source", "note")}
+        rows.append((f"ground_truth_date{sfx}", "ground_truth", day, day, part["zafra"],
+                     part["event"], part["source"], part["note"]))
     return rows
 
 
@@ -303,6 +379,47 @@ async def load_fires(conn, site: str, files: list, tz: str) -> None:
         " ORDER BY s.segment_id LIMIT 1) WHERE f.site_id = $1", site)
 
 
+async def load_reference(conn, site: str, path: Path, season, recs: list) -> None:
+    """Reference fields, their dates, and the facts and summaries of their summaries.jsonl
+    records (`recs`, all records of the file)."""
+    gj = json.loads(path.read_text())
+    crs = (gj.get("crs") or {}).get("properties", {}).get("name")
+    if crs not in (None, "urn:ogc:def:crs:OGC:1.3:CRS84", "EPSG:4326"):
+        raise ValueError(f"{path}: unexpected CRS {crs}")
+    by_field = {fid: r for r in recs if (fid := record_field_id(r)) is not None}
+    fields, dates = [], []
+    for f in gj["features"]:
+        values, extra = reference_record(f["properties"])
+        fid = values[0]
+        facts = (by_field.get(fid) or {}).get("facts")
+        fields.append((*values, json.dumps(extra), json.dumps(clean_json(facts)) if facts else None,
+                       json.dumps(f["geometry"])))
+        dates += [(site, fid, *d) for d in reference_dates(f["properties"], season)]
+    types = {c: "text" for c in REFERENCE_COLUMNS}
+    types.update(area_ha="real", harvest_window_start="date", harvest_window_end="date",
+                 properties="text", facts="text", geojson="text")
+    await copy_stage(conn, "stage_reference", types, fields)
+    cols = ", ".join(REFERENCE_COLUMNS)
+    await conn.execute(
+        f"INSERT INTO reference_fields (site_id, {cols}, properties, facts, geom) SELECT $1,"
+        f" {cols}, properties::jsonb, facts::jsonb,"
+        " ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON(geojson), 4326)) FROM stage_reference", site)
+    await conn.copy_records_to_table(
+        "reference_dates", records=dates,
+        columns=["site_id", "field_id", "property", "kind", "date_start", "date_end", "season",
+                 "event", "source", "note"])
+    ids = {f[0] for f in fields}
+    orphans = sorted(set(by_field) - ids)
+    log(f"[{site}] reference fields: {len(fields)} fields, {len(dates)} reference dates,"
+        f" {len(set(by_field) & ids)} with a summary record"
+        + (f"; summary records without a polygon skipped: {orphans}" if orphans else ""))
+    await conn.copy_records_to_table(
+        "reference_summaries",
+        records=[(site, *r) for fid, rec in by_field.items() if fid in ids
+                 for r in reference_summary_rows(rec)],
+        columns=["site_id", "field_id", "lang", "source", "text"])
+
+
 async def load_site(conn, root: Path, site: str) -> float:
     t0 = time.perf_counter()
     cfg_path = require(root, f"configs/{site}.yaml")
@@ -317,6 +434,11 @@ async def load_site(conn, root: Path, site: str) -> float:
         raise MissingInput(f"required input missing: {root / rel['firms_dir']}/*.csv")
     summaries = optional(root, rel["summaries"], site, "summaries and alerts")
     alert_counts = optional(root, rel["alert_counts"], site, "alert counts")
+    if rel["reference_fields"]:
+        reference = optional(root, rel["reference_fields"], site, "reference fields")
+    else:
+        reference = None
+        log(f"[{site}] skip reference fields: no reference_fields in configs/{site}.yaml")
     off_weekly = off_final = None
     if site in OFFICIAL:
         off_weekly = require(root, OFFICIAL[site][0])
@@ -350,11 +472,13 @@ async def load_site(conn, root: Path, site: str) -> float:
                     "official_weekly",
                     records=[(site, *official_record(r)) for r in csv.DictReader(fh)],
                     columns=["site_id", *OFFICIAL_COLUMNS])
+        recs = []
         if summaries:
             recs = [json.loads(line) for line in summaries.read_text().splitlines() if line.strip()]
             seg_recs = [r for r in recs if record_segment_id(r) is not None]
-            log(f"[{site}] summaries.jsonl: {len(recs)} records, {len(seg_recs)} segments loaded,"
-                f" {len(recs) - len(seg_recs)} reference-field records skipped (out of scope)")
+            ref_recs = sum(record_field_id(r) is not None for r in recs)
+            log(f"[{site}] summaries.jsonl: {len(recs)} records, {len(seg_recs)} segments,"
+                f" {ref_recs} reference fields")
             await conn.copy_records_to_table(
                 "summaries", records=[(site, *r) for rec in seg_recs for r in summary_rows(rec)],
                 columns=["site_id", "segment_id", "lang", "source", "text"])
@@ -362,6 +486,8 @@ async def load_site(conn, root: Path, site: str) -> float:
                 "INSERT INTO alerts (site_id, segment_id, code, severity, evidence)"
                 " VALUES ($1, $2, $3, $4, $5::jsonb)",
                 [(site, *a) for rec in seg_recs for a in alert_rows(rec)])
+        if reference:
+            await load_reference(conn, site, reference, info["season"], recs)
     seconds = time.perf_counter() - t0
     log(f"[{site}] loaded in {seconds:.1f} s")
     return seconds

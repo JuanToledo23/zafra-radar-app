@@ -1,9 +1,10 @@
 """Zafra Radar API: /health, /version and the read endpoints over the tables filled by
-app.loader (/sites, /tiles, /segments, /weekly). Endpoint reference: docs/API.md."""
+app.loader (/sites, /tiles, /segments, /weekly, /reference). Endpoint reference: docs/API.md."""
 
 import datetime as dt
 import json
 import math
+import re
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -340,3 +341,81 @@ async def weekly(site: str) -> dict:
         "official": official or None,
         "cumulative": curves,
     })
+
+
+REFERENCE_SQL = """
+SELECT field_id, area_ha, hyp, label, harvest_window_start, harvest_window_end, orig_field,
+       properties, facts, ST_AsGeoJSON(geom, 7) AS geometry,
+       ST_XMin(geom) AS west, ST_YMin(geom) AS south, ST_XMax(geom) AS east,
+       ST_YMax(geom) AS north
+FROM reference_fields WHERE site_id = :site
+"""
+REFERENCE_DATES_SQL = """
+SELECT field_id, property, kind, date_start, date_end, season, event, source, note
+FROM reference_dates WHERE site_id = :site ORDER BY field_id, date_start, property
+"""
+REFERENCE_SUMMARY_SQL = """
+SELECT field_id, lang, source, text FROM reference_summaries WHERE site_id = :site
+"""
+# Share of the reference field's area covered by each map segment, on the geography (m²).
+# Segments that only touch the field (zero-area intersection) are left out.
+REFERENCE_OVERLAP_SQL = """
+SELECT r.field_id, s.segment_id, s.harvest_date, s.date_uncertainty_days,
+       ST_Area(ST_Intersection(r.geom, s.geom)::geography)
+           / ST_Area(r.geom::geography) AS overlap_share
+FROM reference_fields r
+JOIN segments s ON s.site_id = r.site_id AND s.geom && r.geom AND ST_Intersects(r.geom, s.geom)
+WHERE r.site_id = :site
+"""
+
+
+def natural_key(field_id: str):
+    """p2a < p2b < p10: digit runs compared as numbers."""
+    return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", field_id)]
+
+
+@app.get("/reference/{site}")
+async def reference(site: str) -> dict:
+    """GeoJSON FeatureCollection of the site's reference fields (empty without them)."""
+    async with engine.connect() as conn:
+        await require_site(conn, site)
+        fields = await fetch(conn, REFERENCE_SQL, site=site)
+        dates = await fetch(conn, REFERENCE_DATES_SQL, site=site)
+        summaries = await fetch(conn, REFERENCE_SUMMARY_SQL, site=site)
+        overlaps = await fetch(conn, REFERENCE_OVERLAP_SQL, site=site)
+
+    def by_field(rows: list[dict]) -> dict[str, list[dict]]:
+        out: dict[str, list[dict]] = {}
+        for r in rows:
+            out.setdefault(r["field_id"], []).append({k: v for k, v in r.items() if k != "field_id"})
+        return out
+
+    dates_by, summaries_by = by_field(dates), by_field(summaries)
+    segments_by = {
+        fid: sorted(({**real({k: v for k, v in s.items() if k != "overlap_share"}),
+                      "overlap_share": round(s["overlap_share"], 4)}
+                     for s in rows if s["overlap_share"] > 0),
+                    key=lambda s: (-s["overlap_share"], s["segment_id"]))
+        for fid, rows in by_field(overlaps).items()
+    }
+    features = []
+    for f in sorted(fields, key=lambda r: natural_key(r["field_id"])):
+        fid = f["field_id"]
+        props = real({k: f[k] for k in ("field_id", "area_ha", "hyp", "label",
+                                         "harvest_window_start", "harvest_window_end",
+                                         "orig_field")})
+        features.append({
+            "type": "Feature",
+            "id": fid,
+            "geometry": json.loads(f["geometry"]),
+            "properties": {
+                **props,
+                **(as_json(f["properties"]) or {}),
+                "bbox": [f["west"], f["south"], f["east"], f["north"]],
+                "reference_dates": dates_by.get(fid, []),
+                "facts": as_json(f["facts"]),
+                "summary": pick_summary(summaries_by.get(fid, [])),
+                "segments": segments_by.get(fid, []),
+            },
+        })
+    return clean({"type": "FeatureCollection", "site_id": site, "features": features})

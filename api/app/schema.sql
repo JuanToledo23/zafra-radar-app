@@ -124,3 +124,50 @@ CREATE TABLE IF NOT EXISTS alerts (
     FOREIGN KEY (site_id, segment_id) REFERENCES segments (site_id, segment_id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS alerts_site_segment ON alerts (site_id, segment_id);
+
+-- Reference fields: hand-traced polygons with labels and reference harvest dates
+-- (configs/<site>.yaml reference_fields; Morelos only). Properties are allow-listed by
+-- app.loader, so a new property (e.g. a person's name) stops the load instead of being served.
+CREATE TABLE IF NOT EXISTS reference_fields (
+    site_id              text NOT NULL REFERENCES sites (site_id) ON DELETE CASCADE,
+    field_id             text NOT NULL,        -- `id`: p1 .. p36
+    geom                 geometry(MultiPolygon, 4326) NOT NULL,
+    area_ha              real,
+    hyp                  text,                 -- hypothesis when traced: cana | no_cana
+    label                text,                 -- NDVI label: cana | no_cana | dudoso
+    harvest_window_start date,                 -- NDVI harvest window of the site's season
+    harvest_window_end   date,
+    orig_field           text,
+    properties           jsonb NOT NULL DEFAULT '{}'::jsonb,  -- the other allowed properties
+    facts                jsonb,                -- facts of the field's summaries.jsonl record
+    PRIMARY KEY (site_id, field_id)
+);
+CREATE INDEX IF NOT EXISTS reference_fields_geom_gist ON reference_fields USING gist (geom);
+
+-- Reference dates per field, one row per source property: the labelled NDVI harvest window
+-- and each ground-truth date (ground_truth_date, ground_truth_date_<suffix>).
+CREATE TABLE IF NOT EXISTS reference_dates (
+    site_id     text NOT NULL,
+    field_id    text NOT NULL,
+    property    text NOT NULL,                 -- 'harvest_window' | 'ground_truth_date[_suffix]'
+    kind        text NOT NULL,                 -- 'labelled_window' | 'ground_truth'
+    date_start  date NOT NULL,
+    date_end    date NOT NULL,                 -- = date_start for a single date
+    season      text,                          -- zafra the date belongs to, where known
+    event       text,                          -- ground_truth_event[_suffix], verbatim
+    source      text,                          -- ground_truth_source[_suffix], verbatim
+    note        text,                          -- ground_truth_note[_suffix], verbatim
+    PRIMARY KEY (site_id, field_id, property),
+    FOREIGN KEY (site_id, field_id) REFERENCES reference_fields (site_id, field_id) ON DELETE CASCADE
+);
+
+-- Summaries of the reference-field records of results/6/summaries.jsonl.
+CREATE TABLE IF NOT EXISTS reference_summaries (
+    site_id     text NOT NULL,
+    field_id    text NOT NULL,
+    lang        text NOT NULL,                 -- 'es' | 'en'
+    source      text NOT NULL,                 -- 'template' | 'llm' (verifier passed)
+    text        text NOT NULL,
+    PRIMARY KEY (site_id, field_id, lang, source),
+    FOREIGN KEY (site_id, field_id) REFERENCES reference_fields (site_id, field_id) ON DELETE CASCADE
+);

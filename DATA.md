@@ -77,6 +77,9 @@ JSON top-level keys. No inspection took more than 1 s.
 | `official_weekly` | `results/10/ez_weekly.csv`, all columns | Morelos only |
 | `summaries` | `results/6/summaries.jsonl`: `template.<lang>` and `llm.<lang>` | segment records only; the LLM text only when the LLM rendered it and the verifier passed for that language |
 | `alerts` | `results/6/summaries.jsonl`: `alerts[]` (`code`, `severity`, `evidence`) | segment records only |
+| `reference_fields` | `reference_fields` of `configs/<site>.yaml` (`data/fields/fields_v2.geojson`): `id` → `field_id`, `area_ha`, `hyp`, `label`, `harvest_window_start`, `harvest_window_end`, `orig_field`; the other allowed properties (`region`, `municipio`, `ground_truth_*`) in `properties` (jsonb); `facts` of the field's record in `results/6/summaries.jsonl` | every feature (38, Morelos only); Polygons wrapped with `ST_Multi`; CRS84 checked |
+| `reference_dates` | the same GeoJSON: `harvest_window_start/end` (kind `labelled_window`) and each `ground_truth_date[_suffix]` with its `ground_truth_zafra/event/source/note[_suffix]` (kind `ground_truth`) | one row per date present: 26 windows and 2 ground-truth dates |
+| `reference_summaries` | `results/6/summaries.jsonl`: `template.<lang>` and `llm.<lang>` of the reference-field records (`facts.field_id`, no `segment_id`) | same rule as `summaries`; 152 rows (38 fields × 2 languages × template and LLM) |
 
 **Cane rule.** A segment is cane if it is in the slim map: the library's script 15 writes
 only the polygons with `cane_pred == True` (the delivered optical gate) to that file. Every
@@ -94,13 +97,36 @@ ranges: Morelos HV -22.7 to -2.9, HH -17.2 to +9.3; Brazil HV -23.8 to -4.0, HH 
 **Gaps.**
 
 * Summaries and alerts exist only for the summarised polygons, not for the whole map:
-  `summaries.jsonl` has 58 Morelos records; 20 are map segments and are loaded, 38 are the
-  reference fields (keyed by field id, no segment) and are skipped, as reference fields are
-  out of scope. That gives 78 summary rows (one segment's LLM summary fell back to the
-  template) and 9 alerts.
-* Brazil has no summaries, alerts, alert counts or official data; the loader logs one line
+  `summaries.jsonl` has 58 Morelos records; 20 are map segments, 38 are the reference fields
+  (keyed by field id, no segment) and go to `reference_summaries` and `reference_fields.facts`.
+  That gives 78 segment summary rows (one segment's LLM summary fell back to the template)
+  and 9 alerts; the alerts of reference-field records are not loaded.
+* Brazil has no summaries, alerts, alert counts, official data or reference fields (no
+  `reference_fields` in its config); the loader logs one line
   for each and continues.
 * `fires.segment_id` uses point-in-polygon. The library's `fires_cane` in `weekly.csv` uses a
   200 m buffer (`alerts.fire_buffer_m`), so the two counts differ.
 * Known difference, not investigated: weekly.csv has 1,097 Morelos fires in its window; the
   loader's local-date count for the same window is 1,098.
+
+## Reference fields and their dates
+
+Checked on 2026-11-14 in `data/fields/fields_v2.geojson` and the 38 reference-field records
+of `results/6/summaries.jsonl`.
+
+| Date | Properties | Fields |
+|---|---|---|
+| Labelled harvest window, zafra 2025-26 (Sentinel-2 NDVI, library script 07; p36's by script 09) | `harvest_window_start`, `harvest_window_end` | the 26 fields labelled `cana`; `null` for `dudoso` / `no_cana` |
+| Reported ground-truth date, zafra 2024/25 | `ground_truth_date`, with `ground_truth_zafra`, `ground_truth_event`, `ground_truth_source` (the label's source: the grower, a dated video, "por confirmar"), `ground_truth_note` | p36 only |
+| Reported ground-truth date, 2026 | `ground_truth_date_2026`, with `ground_truth_event_2026` (no source, zafra or note property of its own) | p36 only |
+
+* No property holds a confirmed date: both ground-truth dates are reported and marked "por
+  confirmar" in the file, and the library's docs/DATA_SOURCES.md calls the report "not yet
+  checked".
+* The summary facts hold no reference date; they hold the library's field-level radar output
+  (`harvest_date`, `date_uncertainty_days`, `cane_confidence`, `segments_covering`, ...).
+* Privacy: no property holds a personal name (`region` and the note say "grower-reported
+  field"), so nothing is excluded. The loader allow-lists the properties; any other
+  property stops the load until it has been checked.
+* The 2024/25 ground-truth date is before the NISAR coverage, so the app computes no
+  radar difference for it.
