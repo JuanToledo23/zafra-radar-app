@@ -8,3 +8,5 @@ export const HARVEST_COLOR = "#CC79A7"; // reddish purple: harvest line and ± b
 export const FIRE_COLOR = "#D55E00"; // vermillion: fire markers on the x axis
 export const REFERENCE_COLOR = "#6a737d"; // grey: reference lines
 export const GRID_COLOR = "#e4e6ea";
+export const OFFICIAL_COLOR = "#0072B2"; // blue: official mill share (season progress)
+export const MARKER_COLOR = "#1f2328"; // ink: the time slider's week on the season charts
