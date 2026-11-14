@@ -1,0 +1,74 @@
+# Zafra Radar product skeleton (exercise 7). Start: docker compose up --build
+# Values come from .env (copy .env.example); the defaults below match it.
+name: zafra-radar-app
+
+x-db-env: &db-env
+  POSTGRES_DB: ${POSTGRES_DB:-zafra}
+  POSTGRES_USER: ${POSTGRES_USER:-zafra}
+  # local-only default for the demo database (never exposed beyond localhost); not a secret
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zafra_local_only}
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    # The official image is amd64 only; on Apple Silicon it runs under emulation.
+    platform: linux/amd64
+    environment: *db-env
+    ports:
+      - "${DB_PORT:-5434}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Over TCP: during first init the entrypoint runs a socket-only temporary server that
+      # would already pass a socket check, then restarts.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  api:
+    build: ./api
+    environment:
+      <<: *db-env
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+    ports:
+      # host 8010 (8000 is often taken by another local API); the container listens on 8000
+      - "${API_PORT:-8010}:8000"
+    volumes:
+      - ./api/app:/srv/app
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json,urllib.request as u; assert json.load(u.urlopen('http://localhost:8000/health'))['status']=='ok'"
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build: ./web
+    environment:
+      API_PROXY_TARGET: http://api:8000
+      VITE_POLL: "1"
+    ports:
+      # host 5174 (5173 is often taken by another local Vite app); the container listens on 5173
+      - "${WEB_PORT:-5174}:5173"
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5173/sample.geojson"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:

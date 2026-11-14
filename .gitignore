@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.vite/
+.env
+.env.*
+!.env.example
+/data/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.parquet
+*.geojson
+!web/public/sample.geojson
+.DS_Store
+HANDOFF_*.md
+INVESTIGATION_*.md
