@@ -171,3 +171,14 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
 - Headless Chrome at 1440×900, 1280×720 and 390×844, both sites, EN / ES: 383 checks pass, no
   console errors; weekly report 2 pages on Letter and A4 (both sites, both languages).
 - Type-check and build pass in the web container; api suite 110 passed.
+
+## 2026-11-15 00:25 CST
+
+- Explorer simplified to three map views (Harvest map, Radar image, Before / after), one click
+  each; every other map control moved under "More options", field charts and numbers beyond
+  the HV signal under "More detail". No API, calculation or data change.
+- Harvest map: standing `#1b6e35`, harvested `#ffb000`, no date `#d6d6d6` over a dimmed
+  basemap; simulated protan / deutan / tritan CIEDE2000 between the two states ≥ 26.
+- EN / ES switch for the whole interface; dates day first (21 Dec 2025 / 21 dic 2025).
+- Headless Chrome at 1280×720 and 1440×900, both sites and languages, offline and the weekly
+  report (2 pages, Letter and A4): 487 checks pass; build passes; api suite 110 passed.

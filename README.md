@@ -46,15 +46,19 @@ What exists right now:
   besides `/health` and `/version` (see [docs/API.md](docs/API.md));
 * the **map** draws the segment vector tiles from the API, with a site select (Morelos /
   Brazil) that refits the map, a weekly time slider with play/pause over the site's harvest
-  dates (segments harvested by the slider date coloured by harvest date, the rest standing
-  green, undated grey) and the cumulative count of detected harvests from `/weekly`, a
-  legend and hover highlight;
+  dates ("Week of" its Monday) and the fields harvested so far (`/weekly`) with their hectares
+  (`/ops/{site}/series`), and three views, one click each: **Harvest map** (harvested amber,
+  standing green, no harvest date grey, over a dimmed basemap; colour by harvest date under More
+  options), **Radar image** (the NISAR HV image following the timeline) and **Before / after**
+  (first against last acquisition with a divider); a legend of at most three entries;
 * the **field detail panel**: clicking a segment loads `/segments/{site}/{segment_id}` into
-  the side panel: area, status and "Zoom to field"; harvest date ± uncertainty, date
-  confidence and the optical and radar cane probabilities, HV drop and minimum coherence;
-  the field summary with an EN / ES toggle and its source; HV, HH (both orbits) and
-  coherence charts on one date axis with the harvest date band and nearby fires; the fire
-  list within 200 m and the field's alerts;
+  the side panel: area, status and "Zoom to field"; one sentence, "Harvested around <date>
+  (± n days)" or "No harvest date detected"; the HV radar signal of both orbits with the
+  harvest date band; the field summary with an EN / ES toggle and its source. "More detail"
+  holds the date confidence, the optical and radar cane probabilities, HV drop and minimum
+  coherence, HV, HH and coherence charts on one date axis with nearby fires, the fire list
+  within 200 m and the field's alerts; with nothing selected the panel shows the site's three
+  key numbers;
 * the **season progress panel** ("Season progress" on the timeline bar under the map) opens as a
   drawer across the bottom of the map, from `/sites` and `/weekly/{site}`: cane and dated area and segment counts (and,
   for Morelos, the official mill area and detected area as a share of it); weekly detected
@@ -65,14 +69,14 @@ What exists right now:
 * **reference fields**: the loader also fills `reference_fields`, `reference_dates` and
   `reference_summaries` (Morelos' 38 traced fields, with their NDVI harvest windows, p36's
   reported ground-truth dates and summaries), served by `/reference/{site}`. "Reference
-  fields" in the Map layers panel draws the outlines (white dashes, id labels from zoom 12); clicking
+  fields" under More options on the map panel draws the outlines (white dashes, id labels from zoom 12); clicking
   one opens a card with its reference dates, the radar date ± uncertainty of the field and
   of each overlapping segment, the difference in days, the summary (EN / ES) and links to
   the segments' detail. "Find field" flies to a reference field (p36) or a segment (cc20456).
 * **alerts**: `tools/build_alerts.py` runs the library's own alert rules over every cane
   segment of both sites into `data/derived/` (DATA.md); the loader loads them, and
   `/alerts/{site}` serves per-code counts with the library's definitions and pages of alerts.
-  "Alerts" in the Map layers panel lists them in the side panel: a fixed note that they are flags for
+  "Alerts" under More options lists them in the side panel: a fixed note that they are flags for
   review, code chips that filter the list and outline the matching segments on the map, 50
   rows at a time; clicking a row flies to the segment and opens its detail.
 * **mill operations**: a top-bar switch between "Explorer" and "Mill operations". The latter
@@ -95,23 +99,25 @@ What exists right now:
   [docs/FINDINGS.md](docs/FINDINGS.md).
 
 * **radar imagery** (Explorer): the library's NISAR GCOV tile sets (six ascending dates per
-  site; HV, HH, HV − HH cross-ratio and HV change) under the field polygons. "Radar imagery"
-  in the Map layers panel: off, single date (product, date, "Follow time slider" for the latest
-  acquisition on or before the slider date, opacity, field outlines on top in the harvest
-  colours or hidden) or compare (earlier date left, later date right, a draggable divider;
-  the right side can show the library's HV change layer for the pair where one exists). A
-  legend line gives the library's description of the colours and the acquisition date(s);
+  site; HV, HH, HV − HH cross-ratio and HV change) under the field polygons, shown by the
+  Radar image and Before / after views. Under More options: product, date or "Follow time
+  slider" for the latest acquisition on or before the slider date, the compare dates, the
+  library's HV change layer for the pair on the right where one exists, opacity, field
+  outlines on top in the harvest colours (off by default). The full legend gives the library's
+  description of the colours and the acquisition date(s);
   the imagery credit is the library's NISAR line (docs/DATA_SOURCES.md). Tiles exist for zoom 10-14;
   the tiles reach the server only with `./deploy.sh --with-rasters` (about 650 MB).
-* **interface**: one design system ([docs/DESIGN.md](docs/DESIGN.md)): a top bar (site, the
-  Explorer / Mill operations switch, Find field, language on Mill operations, connection
-  status), a Map layers panel (harvest legend, radar imagery, reference fields, alerts), a
-  timeline bar under the map with play and the current date, the season panel as a bottom
-  drawer, the detail panel on the right; "?" tooltips with one plain sentence per chart,
-  number and layer (technical term in parentheses); a three-step "Start here" guide on the
-  first visit (remembered in the browser); loading, empty and error states; keyboard
-  operation, visible focus and reduced motion; at phone width the page scrolls (map,
-  timeline, drawer, detail). Data colours and their meaning are unchanged.
+* **interface**: one design system ([docs/DESIGN.md](docs/DESIGN.md)), one idea per view with
+  everything else behind "More options" / "More detail", closed by default: a top bar (site,
+  the Explorer / Mill operations switch, Find field, an EN / ES switch for the whole interface
+  in Mexican Spanish), the map panel (three views, legend, More options: colour by date, radar
+  settings, reference fields, alerts), a timeline bar under the map, the season panel as a
+  bottom drawer, the detail panel on the right; dates day first in the interface language
+  (21 Dec 2025 / 21 dic 2025; API and CSV keep ISO dates); "?" tooltips with one plain
+  sentence per chart, number and layer (technical term in parentheses); a three-step "Start
+  here" guide on the first visit (remembered in the browser); loading, empty and error states;
+  keyboard operation, visible focus and reduced motion; at phone width the page scrolls (map,
+  timeline, drawer, detail).
 * **deployment**: first production deployment to zafraradar.earth on 2026-11-14 (see
   [DEPLOY.md](DEPLOY.md) and [docs/JOURNAL.md](docs/JOURNAL.md)).
 
@@ -206,9 +212,11 @@ At 1440×900 (headless Chrome, `docs/screenshots/`):
 
 | | |
 |---|---|
-| ![Explorer](docs/screenshots/explorer.png) Explorer: map layers, timeline, detail panel | ![Field detail](docs/screenshots/field_detail.png) Field detail |
-| ![Season panel](docs/screenshots/season_panel.png) Season progress drawer | ![Radar compare](docs/screenshots/radar_compare.png) Radar imagery, compare |
-| ![Mill operations](docs/screenshots/mill_operations_es.png) Mill operations, Spanish | ![Weekly report](docs/screenshots/weekly_report.png) Weekly report |
+| ![Harvest map](docs/screenshots/view_harvest.png) Harvest map (default view) | ![Radar image](docs/screenshots/view_radar.png) Radar image |
+| ![Before / after](docs/screenshots/view_before_after.png) Before / after | ![Explorer](docs/screenshots/explorer.png) More options open, colour by harvest date |
+| ![Field detail](docs/screenshots/field_detail.png) Field detail | ![Season panel](docs/screenshots/season_panel.png) Season progress drawer |
+| ![Radar compare](docs/screenshots/radar_compare.png) Before / after with its More options | ![Mill operations](docs/screenshots/mill_operations_es.png) Mill operations, Spanish |
+| ![Weekly report](docs/screenshots/weekly_report.png) Weekly report | |
 
 ## License
 
