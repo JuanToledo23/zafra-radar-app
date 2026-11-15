@@ -1,0 +1,2 @@
+-- E1. Season fires of Morelos (UTC time inside sites.season_start .. season_end, as /ops).
+\copy (SELECT f.fire_id, f.datetime_local::date AS fire_date, f.datetime_local, f.confidence, f.satellite, f.frp, ST_X(f.geom) AS lon, ST_Y(f.geom) AS lat FROM fires f JOIN sites t ON t.site_id = f.site_id WHERE f.site_id = 'morelos' AND f.datetime_utc >= t.season_start::timestamp AT TIME ZONE 'UTC' AND f.datetime_utc < t.season_end::timestamp AT TIME ZONE 'UTC' ORDER BY f.fire_id) TO STDOUT WITH CSV HEADER

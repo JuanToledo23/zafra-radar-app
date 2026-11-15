@@ -1,0 +1,3 @@
+-- E2. Every (season fire, cane segment) pair within 750 m on the geography, with the distance
+-- (0 when the point is inside), point-in-polygon flag and the segment's harvest date.
+\copy (SELECT f.fire_id, g.segment_id, ST_Distance(f.geom::geography, g.geom::geography) AS dist_m, ST_Intersects(g.geom, f.geom) AS inside, g.harvest_date FROM fires f JOIN sites t ON t.site_id = f.site_id JOIN segments g ON g.site_id = f.site_id WHERE f.site_id = 'morelos' AND f.datetime_utc >= t.season_start::timestamp AT TIME ZONE 'UTC' AND f.datetime_utc < t.season_end::timestamp AT TIME ZONE 'UTC' AND f.geom && ST_Expand(g.geom, 0.01) AND ST_DWithin(f.geom::geography, g.geom::geography, 750) ORDER BY f.fire_id, g.segment_id) TO STDOUT WITH CSV HEADER
