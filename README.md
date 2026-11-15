@@ -76,14 +76,17 @@ What exists right now:
   rows at a time; clicking a row flies to the segment and opens its detail.
 * **mill operations**: a header switch between "Explorer" and "Mill operations". The latter
   replays the season as of a date for a mill's field department (`/ops/{site}`, app logic
-  defined in docs/API.md): a "Season replay · data as of" banner with a week stepper and date
-  input kept in sync with the explorer's slider; a brief (cane area, harvested to date and in
-  the last 7 days, standing cane, no date detected, pace and projected end, burned and not
-  harvested, fires outside permitted hours, an estimated cane tonnage for Morelos); the
-  burned-and-not-harvested table with bucket chips (0–2, 3–7, 8–14, > 14 days since the first
-  fire), row click that outlines the field on a map coloured by bucket; CSV exports of the
-  list and of a full field ledger; EN / ES. The loader precomputes each segment's season fire
-  dates for it.
+  defined in docs/API.md), using only what was known on that date (radar harvest dates and
+  fire detections on or before it; an HTTP test checks every endpoint of the screen): a
+  "Season replay · data as of" banner with a week stepper and date input kept in sync with the
+  explorer's slider; a brief (cane area, harvested to date, in the last 7 days and the 7 before,
+  pace, not yet detected as harvested, and for Morelos an estimated cane tonnage and the mill's
+  official harvested area beside the detected one); a "Harvested this week" list (7 or 14
+  days, to reconcile with the mill's delivery records), a "Not yet detected as harvested" list
+  and the last 7 days' fire detections near cane as context, never attributed to a field; a map
+  as of the date; CSV exports of both lists and of a full field ledger; EN / ES. An earlier
+  burned-and-not-harvested list was tested against chance and removed:
+  [docs/FINDINGS.md](docs/FINDINGS.md).
 
 The other event features (raster swipe, deployment) do not exist yet.
 

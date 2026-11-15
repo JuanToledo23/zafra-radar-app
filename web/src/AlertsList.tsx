@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ALERT_NOTE, ALERT_PAGE, alertLabel, evidenceLine, oneLine, type AlertPage, type AlertRow } from "./alerts";
+import { ALERT_FIRE_NOTE, ALERT_NOTE, ALERT_PAGE, alertLabel, evidenceLine, oneLine, type AlertPage, type AlertRow } from "./alerts";
+import { FINDINGS_URL } from "./ops";
 
 type Props = {
   siteId: string;
@@ -55,7 +56,13 @@ export default function AlertsList({ siteId, code, onCode, onOpen }: Props) {
   const disabled = page?.codes.filter((c) => !c.enabled) ?? [];
   return (
     <div className="alerts-list" data-testid="alerts-list" data-state={load.state}>
-      <p className="note alerts-note" data-testid="alerts-note">{ALERT_NOTE}</p>
+      <p className="note alerts-note" data-testid="alerts-note">
+        {ALERT_NOTE} {ALERT_FIRE_NOTE}{" "}
+        <a href={FINDINGS_URL} target="_blank" rel="noreferrer" data-testid="findings-link">
+          Why: fire detections cannot be attributed to single fields
+        </a>
+        .
+      </p>
       {load.state === "loading" && <p className="muted">Loading alerts…</p>}
       {load.state === "error" && <p className="error">Could not load alerts: {load.message}</p>}
       {page && (

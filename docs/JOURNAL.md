@@ -101,3 +101,17 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
   bucket, exports, EN / ES). 28 new tests, 65 pass; type-check and build pass; checked
   headless in Chrome, both sites and languages.
 
+
+## 2026-11-14 20:24 CST
+
+- The "Mill operations" screen's burned-and-not-harvested list (fire within 200 m, no harvest
+  date yet, days since burn) was tested against chance on Morelos: a field's attributed fire
+  falls within ±3 days of its radar harvest date in 14–25 % of cases against 9.9–13.0 % by
+  chance within the same month; about a third come after the harvest (docs/FINDINGS.md).
+- Removed the list, its buckets, CSV and map colours, the fire-to-harvest endpoint, the
+  projected end and the outside-hours figure; the loader's per-segment fire columns and
+  `sites.burn_window` are dropped. Analysis scripts in `tools/analysis/fire_attribution/`.
+- Replaced by a brief and lists on radar harvest dates only, as of the date with no hindsight
+  (harvested this week, not yet detected as harvested, official area beside detected), fire
+  detections near cane as unattributed context, and per-date map tiles; a test checks every
+  endpoint of the screen for dates after the selected one.

@@ -34,6 +34,8 @@ export const ALERT_PAGE = 50;
 export const ALERT_OUTLINE_COLOR = "#ff2d2d"; // unlike the fill ramp, the reference and the selection colours
 export const ALERT_NOTE =
   "Flags for review, not findings of wrongdoing. Satellite fire detections cover only part of the fires.";
+// Added to the note: why a fire rule's flag does not mean the field itself burned.
+export const ALERT_FIRE_NOTE = "A fire detected within 200 m of a field is often a neighbouring field's.";
 
 // Plain-language names for the library's alert codes (zafra.alerts.CODES).
 export const ALERT_LABELS: Record<string, string> = {

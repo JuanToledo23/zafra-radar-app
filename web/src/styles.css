@@ -184,10 +184,15 @@ html, body, #root { margin: 0; height: 100%; }
 .ops-card-note { font-size: 11px; color: var(--muted); line-height: 1.3; font-variant-numeric: tabular-nums; }
 .ops-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(440px, 48%) 1fr; }
 .ops-list { min-height: 0; overflow-y: auto; padding: 8px 16px; border-right: 1px solid var(--line); }
-.ops-list h2 { font-size: 13px; text-transform: uppercase; color: var(--muted); margin: 0; }
+.ops-tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.ops-tab {
+  font: inherit; font-size: 12px; cursor: pointer; padding: 5px 10px; background: none; color: var(--muted);
+  border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.ops-tab.on { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+.ops-tab .chip-count { margin-left: 2px; }
 .ops-list-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.ops-exports { display: flex; gap: 6px; flex-wrap: wrap; }
-.ops-exports a { color: var(--ink); text-decoration: none; border: 1px solid #8c959f; border-radius: 3px; background: #f6f8fa; }
+a.ops-export { color: var(--ink); text-decoration: none; border: 1px solid #8c959f; border-radius: 3px; background: #f6f8fa; }
 .ops-help { margin: 4px 0; }
 .ops-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
 .ops-chip {
@@ -196,7 +201,6 @@ html, body, #root { margin: 0; height: 100%; }
 }
 .ops-chip.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); background: #f4f6f8; font-weight: 600; }
 .ops-chip .chip-count { margin-left: 2px; }
-.pips { font-size: 9px; letter-spacing: -1px; color: var(--ink); }
 .ops-table-wrap { overflow-x: auto; }
 .ops-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
 .ops-table th { text-align: left; font-weight: 500; color: var(--muted); border-bottom: 1px solid var(--line); padding: 3px 6px 3px 0; white-space: nowrap; }
@@ -206,15 +210,13 @@ html, body, #root { margin: 0; height: 100%; }
 .ops-table tbody tr:hover { background: #f4f6f8; }
 .ops-table tbody tr.on { background: #e0f9fc; box-shadow: inset 3px 0 0 #00b8cc; }
 .ops-seg { font-weight: 600; }
-.ops-days { font-weight: 600; display: inline-block; min-width: 2.2em; text-align: right; }
-.ops-bucket { display: inline-flex; align-items: center; gap: 3px; }
 .ops-map-wrap { position: relative; display: flex; min-width: 0; min-height: 0; }
 .ops-legend {
   position: absolute; right: 10px; bottom: 28px; background: rgba(255, 255, 255, 0.92); border: 1px solid var(--line);
   border-radius: 6px; padding: 6px 10px; font-size: 12px;
 }
 .ops-legend .legend-item { margin-top: 3px; }
-.ops-legend .legend-item.dim { opacity: 0.4; }
+.ops-legend .swatch.dot { border-radius: 50%; border: 1px solid #1d1d1d; width: 9px; height: 9px; }
 @media (max-width: 700px) {
   /* one scrolling column: banner, brief, list, then the map */
   .header { height: auto; min-height: var(--header-h); flex-wrap: wrap; gap: 4px; padding: 6px 12px; }
