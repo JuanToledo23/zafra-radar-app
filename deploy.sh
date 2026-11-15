@@ -72,8 +72,9 @@ sed 's/^/#   /' "$inputs"
 run rsync -a --human-readable --stats --files-from="$inputs" "$ZAFRA_DATA/" "$target:$REMOTE_ROOT/data/"
 run rsync -a --human-readable --stats --exclude=/tiles/ "$ZAFRA_DERIVED/" "$target:$REMOTE_ROOT/derived/"
 if ((with_rasters)); then
-  # explicit destinations: macOS openrsync ignores the /./ marker of --relative
-  run rsync -a --human-readable --stats "$ZAFRA_DATA/data/tiles/" "$target:$REMOTE_ROOT/data/tiles/"
+  # explicit destinations: macOS openrsync ignores the /./ marker of --relative. The remote
+  # data directory mirrors the library root, so its data/tiles/ is under $REMOTE_ROOT/data/.
+  run rsync -a --human-readable --stats "$ZAFRA_DATA/data/tiles/" "$target:$REMOTE_ROOT/data/data/tiles/"
   run rsync -a --human-readable --stats "$ZAFRA_DERIVED/tiles/" "$target:$REMOTE_ROOT/derived/tiles/"
 fi
 

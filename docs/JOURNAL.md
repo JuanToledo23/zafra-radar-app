@@ -233,3 +233,10 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
 - Fourteen named events (site, map view, play, field and reference field opened, season panel,
   Mill operations, weekly report, CSV export, language, tour start / step / finish, Find field
   found or not); no field ids or typed text. Disclosed in the tour's last scene and README.
+
+## 2026-11-15 10:21 CST
+
+- `deploy.sh --with-rasters` copied the library's raster tiles to `/srv/zafra/data/tiles/`,
+  but the API reads `$ZAFRA_DATA/data/tiles` with `ZAFRA_DATA=/srv/zafra/data`; the
+  destination is now `/srv/zafra/data/data/tiles/`, as the remote data directory mirrors the
+  library root. The derived overview tiles' destination was already right and is unchanged.
