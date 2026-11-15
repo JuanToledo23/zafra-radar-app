@@ -85,6 +85,20 @@ const FIT_PADDING = { top: 24, bottom: 24, left: 24, right: 56 };
 // Opening view of the radar views: the site's radar area (RADAR_AREAS), shifted right of most
 // of the map panel, which covers only the window's top-left corner.
 const RADAR_PADDING = { top: 24, bottom: 24, left: 220, right: 56 };
+const BOX_PADDING = 80; // a field
+type FitKind = "cane" | "radar" | "box";
+
+/** Camera padding of a fit: the paddings above, clear of the map panel and the zoom buttons.
+ * On a narrow map (phones and tablets) the panel spans the top, so the fit starts below it;
+ * the top padding is held under 60 % of the map's height, so the camera can always fit. */
+function fitPadding(map: maplibregl.Map, kind: FitKind) {
+  const base = kind === "cane" ? FIT_PADDING : kind === "radar" ? RADAR_PADDING : BOX_PADDING;
+  const c = map.getContainer();
+  const panel = c.closest(".map-area")?.querySelector<HTMLElement>(".layers");
+  if (!panel || panel.offsetWidth < 0.6 * c.clientWidth) return base;
+  const top = panel.getBoundingClientRect().bottom - c.getBoundingClientRect().top + 12;
+  return { top: Math.max(16, Math.min(top, 0.6 * c.clientHeight - 16)), bottom: 16, left: 16, right: 16 };
+}
 const CAMERA_MS = 500;
 // Divider hint on entering Before / after: one small sway either side, then back to the middle.
 const HINT_DELAY_MS = 500;
@@ -456,8 +470,8 @@ export default function MapView({
     const known = extents.current.get(site.site_id);
     const area = () => (imageryRef.current ? RADAR_AREAS[site.site_id] : undefined);
     map.setMaxBounds(null); // the previous site's image footprint
-    if (known && area()) map.fitBounds(area()!, { padding: RADAR_PADDING, duration: 0 });
-    else map.fitBounds(known ?? site.bbox, { padding: known ? FIT_PADDING : 40, duration: 0 });
+    if (known && area()) map.fitBounds(area()!, { padding: fitPadding(map, "radar"), duration: 0 });
+    else map.fitBounds(known ?? site.bbox, { padding: known ? fitPadding(map, "cane") : 40, duration: 0 });
     onSelect(null);
     let live = true;
     const ready = () => {
@@ -472,7 +486,7 @@ export default function MapView({
       if (!box) return ready();
       extents.current.set(site.site_id, box);
       const to = area();
-      map.fitBounds(to ?? box, { padding: to ? RADAR_PADDING : FIT_PADDING, duration: reducedMotion() ? 0 : CAMERA_MS });
+      map.fitBounds(to ?? box, { padding: fitPadding(map, to ? "radar" : "cane"), duration: reducedMotion() ? 0 : CAMERA_MS });
       map.once("idle", ready);
     });
     return () => {
@@ -657,7 +671,7 @@ export default function MapView({
     const map = mapRef.current;
     if (!loaded || !map || !zoomTo) return;
     const [w, s, e, n] = zoomTo.bbox;
-    map.fitBounds([w, s, e, n], { padding: 80, maxZoom: 17, animate: !reducedMotion() });
+    map.fitBounds([w, s, e, n], { padding: fitPadding(map, "box"), maxZoom: 17, animate: !reducedMotion() });
   }, [loaded, zoomTo]);
 
   // Camera moves asked by the app (a map view's opening view, a tour scene).
@@ -668,11 +682,11 @@ export default function MapView({
     const duration = camera.animate && !reducedMotion() ? CAMERA_MS : 0;
     if (!imageBoundsRef.current) map.setMaxBounds(null); // left a radar view: not held to its image
     map.resize(); // the map's size now, if a panel has just opened or closed
-    if (target === "cane") map.fitBounds(extents.current.get(site.site_id) ?? site.bbox, { padding: FIT_PADDING, duration });
+    if (target === "cane") map.fitBounds(extents.current.get(site.site_id) ?? site.bbox, { padding: fitPadding(map, "cane"), duration });
     else if (target === "radar") {
       const area = RADAR_AREAS[site.site_id];
-      if (area) map.fitBounds(area, { padding: RADAR_PADDING, duration });
-    } else map.fitBounds(target, { padding: 80, maxZoom: 17, duration });
+      if (area) map.fitBounds(area, { padding: fitPadding(map, "radar"), duration });
+    } else map.fitBounds(target, { padding: fitPadding(map, "box"), maxZoom: 17, duration });
   }, [loaded, camera]); // a new request moves the camera; a new site does not
 
   // In a radar view the camera stays over the image footprint, so zoomed out the image fills
@@ -782,12 +796,14 @@ export default function MapView({
             aria-orientation="vertical"
             aria-label={t(lang, "legDivider")}
             aria-valuenow={Math.round(split * 100)}
+            // Captured by the element pressed: the strip with a mouse, the handle on a touch
+            // screen, where only the handle takes input (styles.css) and the map pans around it.
             onPointerDown={(e) => {
               stopHint();
-              e.currentTarget.setPointerCapture(e.pointerId);
+              (e.target as Element).setPointerCapture(e.pointerId);
               moveDivider(e);
             }}
-            onPointerMove={(e) => e.currentTarget.hasPointerCapture(e.pointerId) && moveDivider(e)}
+            onPointerMove={(e) => (e.target as Element).hasPointerCapture(e.pointerId) && moveDivider(e)}
           >
             <span className="radar-handle" data-testid="radar-handle">
               <Icon name="chevronLeft" size={16} />

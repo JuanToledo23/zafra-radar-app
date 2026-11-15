@@ -1,3 +1,4 @@
+import { useEffect, useRef, type ReactNode } from "react";
 import type { Selection, Site } from "./App";
 import AlertsList from "./AlertsList";
 import type { AlertRow } from "./alerts";
@@ -20,6 +21,10 @@ export type SeasonSoFar = {
 };
 
 type Props = {
+  top: ReactNode; // shown first (the map panel, on a short screen)
+  sheet: boolean; // phones and tablets: a bottom sheet with a summary bar
+  sheetOpen: boolean;
+  onSheet: (open: boolean) => void;
   site: Site | null;
   season: SeasonSoFar | null;
   selected: Selection;
@@ -131,7 +136,51 @@ function SiteFacts({ site, season, referenceOn }: { site: Site; season: SeasonSo
   );
 }
 
+/** The bottom sheet's summary bar: what the sheet holds in one line, a tap opens or closes
+ * it; with a field open, a button closes the field. */
+function SheetBar({ site, season, selected, alertsOpen, open, onOpen, onSelect }: {
+  site: Site | null;
+  season: SeasonSoFar | null;
+  selected: Selection;
+  alertsOpen: boolean;
+  open: boolean;
+  onOpen: (open: boolean) => void;
+  onSelect: (s: Selection) => void;
+}) {
+  const lang = useLang();
+  const share = season?.hectares != null && site?.cane_area_ha ? (100 * season.hectares) / site.cane_area_ha : null;
+  const title = selected
+    ? `${t(lang, selected.kind === "reference" ? "referenceTitle" : "fieldTitle")} ${selected.id}`
+    : alertsOpen
+      ? t(lang, "alerts")
+      : t(lang, "seasonSoFar");
+  const sub = !selected && !alertsOpen && share !== null ? t(lang, "sheetSeason", { pct: formatNumber(lang, share) }) : null;
+  return (
+    <div className="sheet-bar">
+      <button
+        type="button"
+        className="sheet-toggle"
+        aria-expanded={open}
+        title={t(lang, open ? "sheetClose" : "sheetOpen")}
+        data-testid="sheet-toggle"
+        onClick={() => onOpen(!open)}
+      >
+        <span className="sheet-grip" aria-hidden="true" />
+        <span className="sheet-title">{title}</span>
+        {sub && <span className="sheet-sub" data-testid="sheet-sub">{sub}</span>}
+        <Icon name="chevronDown" className="sheet-chev" />
+      </button>
+      {selected && (
+        <button type="button" className="icon-btn sheet-clear" aria-label={t(lang, "clearField")} data-testid="sheet-clear" onClick={() => onSelect(null)}>
+          <Icon name="close" size={20} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function SidePanel({
+  top, sheet, sheetOpen, onSheet,
   site, season, selected, reference, referenceOn, onZoom, onSelect, alertsOpen, alertCode, onAlertCode, onOpenAlert,
 }: Props) {
   const lang = useLang();
@@ -140,8 +189,22 @@ export default function SidePanel({
       ? reference?.features.find((f) => f.properties.field_id === selected.id)?.properties
       : undefined;
   const shown = !!(site && (selected?.kind === "segment" || field));
+  // With the map panel above it (a phone in landscape), a field opens scrolled to its top.
+  const fieldRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (top && selected) fieldRef.current?.scrollIntoView({ block: "start" });
+  }, [top !== null, selected?.kind, selected?.id]);
   return (
-    <aside className="panel" data-testid="panel" aria-label={t(lang, "details")}>
+    <aside
+      className={`panel${sheet ? " sheet" : ""}${sheet && sheetOpen ? " sheet-open" : ""}`}
+      data-testid="panel"
+      data-sheet={sheet ? (sheetOpen ? "open" : "closed") : undefined}
+      aria-label={t(lang, "details")}
+    >
+      {top}
+      {sheet && (
+        <SheetBar site={site} season={season} selected={selected} alertsOpen={alertsOpen} open={sheetOpen} onOpen={onSheet} onSelect={onSelect} />
+      )}
       {site && alertsOpen && (
         // Kept mounted while a field is open, so "Back to alerts" returns to the same rows.
         <section hidden={selected !== null}>
@@ -149,7 +212,7 @@ export default function SidePanel({
           <AlertsList siteId={site.site_id} code={alertCode} onCode={onAlertCode} onOpen={onOpenAlert} />
         </section>
       )}
-      <section hidden={alertsOpen && selected === null}>
+      <section ref={fieldRef} hidden={alertsOpen && selected === null}>
         {alertsOpen && selected && (
           <button type="button" className="btn btn-ghost btn-sm back" data-testid="back-to-alerts" onClick={() => onSelect(null)}>
             <Icon name="arrowLeft" /> {t(lang, "backToAlerts")}

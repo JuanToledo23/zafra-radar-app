@@ -7,6 +7,26 @@ import { Icon, type IconName } from "./icons";
 
 export const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+// Phones and tablets (docs/DESIGN.md, Phones and tablets); styles.css repeats these queries.
+// COMPACT: the top bar's menu, touch-sized controls, the tour card under the page. SHEET
+// (narrow, not short): the detail panel as a bottom sheet. Short screens (a phone in
+// landscape) keep a narrow side panel.
+export const COMPACT = "(max-width: 899px), (max-height: 520px)";
+export const SHEET = "(max-width: 899px) and (min-height: 521px)";
+
+/** Whether a media query matches, following changes (rotation, resizing). */
+export function useMedia(query: string): boolean {
+  const [on, setOn] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const update = () => setOn(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, [query]);
+  return on;
+}
+
 /** `value`, eased towards each new value over `ms` (cubic ease-out) so a figure counts up or
  * down instead of jumping; a change mid-way continues from the figure shown. At once with
  * reduced motion, or from or to null. */
@@ -38,12 +58,14 @@ export function useTweened(value: number | null, ms = 350): number | null {
 const TIP_W = 280;
 const TIP_GAP = 8;
 
-/** "?" button with one plain sentence, shown on hover, focus or tap; Escape closes. The
- * text is placed with fixed coordinates, so a scrolling panel does not clip it. */
+/** "?" button with one plain sentence, shown on hover (a mouse), focus or tap; a second tap,
+ * a tap elsewhere or Escape closes. The text is placed with fixed coordinates, so a
+ * scrolling panel does not clip it. */
 export function InfoTip({ text, label }: { text: string; label?: string }) {
   const lang = useLang();
   const id = useId();
   const btn = useRef<HTMLButtonElement>(null);
+  const tapped = useRef(false); // the focus that follows a tap is not a second "show"
   const [pos, setPos] = useState<{ left: number; top: number; above: boolean } | null>(null);
 
   const show = () => {
@@ -58,25 +80,39 @@ export function InfoTip({ text, label }: { text: string; label?: string }) {
   useEffect(() => {
     if (!pos) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && hide();
+    const onDown = (e: Event) => e.target instanceof Node && !btn.current?.contains(e.target) && hide();
     window.addEventListener("keydown", onKey);
     window.addEventListener("scroll", hide, true);
+    window.addEventListener("pointerdown", onDown, true);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", hide, true);
+      window.removeEventListener("pointerdown", onDown, true);
     };
   }, [pos]);
 
   return (
-    <span className="tip" onMouseEnter={show} onMouseLeave={hide}>
+    <span
+      className="tip"
+      onPointerEnter={(e) => e.pointerType === "mouse" && show()}
+      onPointerLeave={(e) => e.pointerType === "mouse" && hide()}
+    >
       <button
         ref={btn}
         type="button"
         className="tip-btn"
         aria-label={label ?? t(lang, "whatIsThis")}
         aria-describedby={pos ? id : undefined}
-        onFocus={show}
-        onBlur={hide}
+        onPointerDown={(e) => (tapped.current = e.pointerType !== "mouse")}
+        onFocus={() => {
+          if (!tapped.current) show();
+        }}
+        onBlur={() => {
+          tapped.current = false;
+          hide();
+        }}
         onClick={(e) => {
+          tapped.current = false;
           e.stopPropagation();
           if (pos) hide();
           else show();

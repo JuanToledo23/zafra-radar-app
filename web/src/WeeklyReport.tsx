@@ -14,7 +14,7 @@ import {
   type OpsFires,
   type OpsSeries,
 } from "./ops";
-import { Icon } from "./icons";
+import { BrandMark, Icon } from "./icons";
 import { fromDay, mondayOf, toDay } from "./season";
 import { MarkerShape, SeriesSwatch } from "./TimeSeriesChart";
 
@@ -125,7 +125,9 @@ function Report({ data, lang, generated }: { data: Data; lang: Lang; generated: 
   return (
     <article className="report" data-testid="weekly-report" data-ready="true" data-as-of={b.as_of}>
       <header className="report-head">
-        <div>
+        <BrandMark size={36} className="report-mark" />
+        <div className="report-head-text">
+          <div className="report-product">Zafra Radar</div>
           <h1>{t(lang, "reportTitle")}</h1>
           <div className="report-site" data-testid="report-site">{siteName(lang, site)}</div>
           <div className="report-sub">
@@ -195,29 +197,31 @@ function Report({ data, lang, generated }: { data: Data; lang: Lang; generated: 
               {t(lang, "reportHarvestedNote", { shown: n(data.harvested.length), total: fields(data.harvestedTotal),
                 from: date(last7.from), to: date(last7.to) })}
             </p>
-            <table className="report-table">
-              <thead>
-                <tr>
-                  <th>{t(lang, "colField")}</th>
-                  <th>{t(lang, "colHarvestDate")}</th>
-                  <th className="num">{t(lang, "colArea")}</th>
-                  {tonnage && <th className="num">{t(lang, "colTonnes")}</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {data.harvested.map((r) => (
-                  <tr key={r.segment_id}>
-                    <td>{r.segment_id}</td>
-                    <td>
-                      {date(r.harvest_date)}
-                      {r.date_uncertainty_days !== null && ` ± ${n(r.date_uncertainty_days, 1)} d`}
-                    </td>
-                    <td className="num">{n(r.area_ha, 2)}</td>
-                    {tonnage && <td className="num">{r.tonnes_estimate === null ? "—" : `≈ ${n(r.tonnes_estimate)}`}</td>}
+            <div className="report-table-wrap">
+              <table className="report-table">
+                <thead>
+                  <tr>
+                    <th>{t(lang, "colField")}</th>
+                    <th>{t(lang, "colHarvestDate")}</th>
+                    <th className="num">{t(lang, "colArea")}</th>
+                    {tonnage && <th className="num">{t(lang, "colTonnes")}</th>}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {data.harvested.map((r) => (
+                    <tr key={r.segment_id}>
+                      <td>{r.segment_id}</td>
+                      <td>
+                        {date(r.harvest_date)}
+                        {r.date_uncertainty_days !== null && ` ± ${n(r.date_uncertainty_days, 1)} d`}
+                      </td>
+                      <td className="num">{n(r.area_ha, 2)}</td>
+                      {tonnage && <td className="num">{r.tonnes_estimate === null ? "—" : `≈ ${n(r.tonnes_estimate)}`}</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <p className="report-note" data-testid="report-more">
               {moreHarvested > 0 ? t(lang, "reportMoreCsv", { n: fields(moreHarvested) }) : t(lang, "reportNoneMore")}
             </p>
@@ -235,22 +239,24 @@ function Report({ data, lang, generated }: { data: Data; lang: Lang; generated: 
               {t(lang, "reportNotDetectedNote", { fields: fields(nd.segments), ha: ha(nd.area_ha),
                 pct: pct(nd.share_of_cane_area), shown: n(data.notDetected.length) })}
             </p>
-            <table className="report-table report-table-cols">
-              <thead>
-                <tr>
-                  <th>{t(lang, "colField")}</th>
-                  <th className="num">{t(lang, "colArea")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.notDetected.map((r) => (
-                  <tr key={r.segment_id}>
-                    <td>{r.segment_id}</td>
-                    <td className="num">{n(r.area_ha, 2)}</td>
+            <div className="report-table-wrap">
+              <table className="report-table report-table-cols">
+                <thead>
+                  <tr>
+                    <th>{t(lang, "colField")}</th>
+                    <th className="num">{t(lang, "colArea")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {data.notDetected.map((r) => (
+                    <tr key={r.segment_id}>
+                      <td>{r.segment_id}</td>
+                      <td className="num">{n(r.area_ha, 2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <p className="report-note">{t(lang, "notDetectedHelp")}</p>
           </>
         )}
@@ -320,26 +326,28 @@ function FireDays({ fires, lang }: { fires: OpsFires; lang: Lang }) {
     if (r.frp !== null) day.frp = Math.max(day.frp ?? 0, r.frp);
   }
   return (
-    <table className="report-table report-table-cols">
-      <thead>
-        <tr>
-          <th>{t(lang, "colDate")}</th>
-          <th className="num">{t(lang, "colDetections")}</th>
-          <th className="num">{t(lang, "colNight")}</th>
-          <th className="num">{t(lang, "colMaxFrp")}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {days.map((d) => (
-          <tr key={d.date}>
-            <td>{formatDate(lang, d.date)}</td>
-            <td className="num">{n(d.count)}</td>
-            <td className="num">{n(d.night)}</td>
-            <td className="num">{d.frp === null ? "—" : n(d.frp, 1)}</td>
+    <div className="report-table-wrap">
+      <table className="report-table report-table-cols">
+        <thead>
+          <tr>
+            <th>{t(lang, "colDate")}</th>
+            <th className="num">{t(lang, "colDetections")}</th>
+            <th className="num">{t(lang, "colNight")}</th>
+            <th className="num">{t(lang, "colMaxFrp")}</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {days.map((d) => (
+            <tr key={d.date}>
+              <td>{formatDate(lang, d.date)}</td>
+              <td className="num">{n(d.count)}</td>
+              <td className="num">{n(d.night)}</td>
+              <td className="num">{d.frp === null ? "—" : n(d.frp, 1)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

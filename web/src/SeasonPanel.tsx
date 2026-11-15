@@ -167,7 +167,8 @@ function WeeklyBars({ weeks, xDomain, markerDay, onPick }: ChartProps & { weeks:
             aria-label={t(lang, "barsAria")}
             data-testid="weekly-chart"
             onPointerMove={(e) => setHover(weekAt(e))}
-            onPointerLeave={() => setHover(null)}
+            onPointerDown={(e) => setHover(weekAt(e))}
+            onPointerLeave={(e) => e.pointerType === "mouse" && setHover(null)}
             onClick={(e) => {
               const i = weekAt(e);
               if (i !== null) onPick(toDay(weeks[i].week_start) + 6);
@@ -272,7 +273,8 @@ function CumulativeChart({ cum, xDomain, markerDay, onPick }: ChartProps & { cum
             aria-label={t(lang, "cumAria")}
             data-testid="cumulative-chart"
             onPointerMove={(e) => setHover(weekAt(e))}
-            onPointerLeave={() => setHover(null)}
+            onPointerDown={(e) => setHover(weekAt(e))}
+            onPointerLeave={(e) => e.pointerType === "mouse" && setHover(null)}
             onClick={(e) => {
               const i = weekAt(e);
               if (i !== null) onPick(toDay(cum.weeks[i].cutoff));

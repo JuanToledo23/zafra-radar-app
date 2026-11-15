@@ -107,10 +107,14 @@ export default function TimeSlider({
               <span className="timeline-fields">
                 <strong>{formatNumber(lang, harvests)}</strong>
                 <span className="timeline-label"> {t(lang, harvests === 1 ? "harvestedSoFarOne" : "harvestedSoFarMany")}</span>
+                {/* phones and tablets: one short word, the date and the count on one line */}
+                <span className="timeline-unit"> {t(lang, harvests === 1 ? "fieldShort" : "fieldsShort")}</span>
               </span>
               {hectares !== null && (
                 <span className="timeline-ha" data-testid="harvest-ha">
-                  <strong>{formatNumber(lang, hectares)}</strong> ha
+                  <span className="timeline-area">
+                    <strong>{formatNumber(lang, hectares)}</strong> ha
+                  </span>
                   {share !== null && (
                     <span data-testid="harvest-share">
                       {" · "}
@@ -131,7 +135,7 @@ export default function TimeSlider({
         data-testid="season-toggle"
         onClick={onToggleSeason}
       >
-        <Icon name="chart" /> {t(lang, "seasonProgress")}
+        <Icon name="chart" /> <span className="btn-label">{t(lang, "seasonProgress")}</span>
       </button>
     </div>
   );

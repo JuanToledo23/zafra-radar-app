@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { Site } from "./App";
 import { ALERT_OUTLINE_COLOR, alertLabel } from "./alerts";
 import { formatDate, t, useLang, type Lang } from "./i18n";
@@ -16,9 +16,11 @@ import {
   UNDATED_OUTLINE,
 } from "./season";
 import { EXPLORER_BACKGROUND } from "./basemap";
-import { Disclosure, InfoTip, Segmented } from "./ui";
+import { Icon } from "./icons";
+import { COMPACT, Disclosure, InfoTip, Segmented, useMedia } from "./ui";
 
 type Props = {
+  docked?: boolean; // at the top of the side panel (a phone in landscape): the full legend
   site: Site | null;
   view: MapViewKind;
   onView: (v: MapViewKind) => void;
@@ -96,18 +98,20 @@ function UndatedSwatch() {
   );
 }
 
-/** At most three plain entries describing what the current view draws. */
-function Legend({ lang, site, view, byDate, rasters, radarView }: {
+/** At most three plain entries describing what the current view draws. `line`: phones and
+ * tablets, one line (the radar bar between two short words); the full legend on demand. */
+function Legend({ lang, site, view, byDate, rasters, radarView, line }: {
   lang: Lang;
   site: Site | null;
   view: MapViewKind;
   byDate: boolean;
   rasters: RasterIndex | null;
   radarView: RadarView | null;
+  line: boolean;
 }) {
   if (view === "harvest")
     return (
-      <div className="legend" data-testid="legend" data-view="harvest">
+      <div className={`legend${line ? " legend-line" : ""}`} data-testid="legend" data-view="harvest">
         <InfoTip text={t(lang, "tipHarvestMap")} />
         {byDate ? (
           <div className="legend-ramp">
@@ -127,19 +131,37 @@ function Legend({ lang, site, view, byDate, rasters, radarView }: {
           <Swatch color={STANDING_COLOR} /> {t(lang, "legStanding")}
         </div>
         <div className="legend-item">
-          <UndatedSwatch /> {t(lang, "legUndated")}
+          <UndatedSwatch /> {t(lang, line ? "legUndatedShort" : "legUndated")}
         </div>
       </div>
     );
   if (!rasters) return <p className="legend muted small">{t(lang, "noRadarTiles")}</p>;
   const layer = radarView?.left ?? null;
   const hv = view === "compare" || layer?.product === "HV";
+  const bar = <div className="ramp ramp-border" style={{ background: `linear-gradient(to right, ${BRIGHT}, ${DARK})` }} aria-hidden="true" />;
+  if (line)
+    return (
+      <div className="legend legend-line" data-testid="legend" data-view={view}>
+        <InfoTip text={t(lang, "tipRadar")} />
+        {hv ? (
+          <div className="legend-item legend-bar-line" data-testid="radar-legend-bar">
+            {t(lang, "legBrightShort")} {bar} {t(lang, "legDarkShort")}
+          </div>
+        ) : (
+          layer && <div className="legend-item">{productName(lang, layer.product)}</div>
+        )}
+        {view === "radar" && layer && !radarView?.note && (
+          <div className="legend-item legend-date" data-testid="radar-date">{layerDates(lang, layer)}</div>
+        )}
+        {view === "radar" && radarView?.note && <div className="legend-item legend-date note" data-testid="radar-note">{radarView.note}</div>}
+      </div>
+    );
   return (
     <div className="legend" data-testid="legend" data-view={view}>
       <InfoTip text={t(lang, "tipRadar")} />
       {hv ? (
         <div className="legend-bar" data-testid="radar-legend-bar">
-          <div className="ramp ramp-border" style={{ background: `linear-gradient(to right, ${BRIGHT}, ${DARK})` }} aria-hidden="true" />
+          {bar}
           <div className="legend-bar-labels">
             <span>{t(lang, "legBright")}</span>
             <span>{t(lang, "legDark")}</span>
@@ -166,11 +188,58 @@ function Legend({ lang, site, view, byDate, rasters, radarView }: {
 // The panel over the map: the three map views (one click each), the legend of the current
 // view, and every other map control behind "More options", closed by default.
 export default function LayersPanel({
+  docked,
   site, view, onView, byDate, onByDate, reference, referenceOn, onReference, alertsOpen, alertCode, onAlerts,
   rasters, radar, radarView, onRadar,
 }: Props) {
   const lang = useLang();
+  const compact = useMedia(COMPACT);
+  const [moreOpen, setMoreOpen] = useState(false);
   const refCount = reference?.features.length ?? 0;
+  const legend = (line: boolean) => (
+    <Legend lang={lang} site={site} view={view} byDate={byDate} rasters={rasters} radarView={radarView} line={line} />
+  );
+  const options = (
+    <>
+      <LayerSwitch
+        title={t(lang, "colourByDate")}
+        tip={t(lang, "tipColourByDate")}
+        on={byDate}
+        testId="by-date-toggle"
+        onClick={onByDate}
+      />
+      <RadarControl index={rasters} settings={radar} view={radarView} onChange={onRadar} />
+      <LayerSwitch
+        title={t(lang, "referenceFields")}
+        tip={t(lang, "tipReference")}
+        on={referenceOn}
+        disabled={!refCount}
+        hint={refCount ? undefined : t(lang, "noRefFields")}
+        testId="reference-toggle"
+        onClick={onReference}
+      >
+        {referenceOn && (
+          <div className="legend-item">
+            <svg width={14} height={14} aria-hidden="true">
+              <rect x={2} y={2} width={10} height={10} fill="none" stroke={REFERENCE_CASING} strokeWidth={3.5} />
+              <rect x={2} y={2} width={10} height={10} fill="none" stroke={REFERENCE_COLOR} strokeWidth={1.5} strokeDasharray="3 2" />
+            </svg>
+            {t(lang, "refLegend", { n: refCount })}
+          </div>
+        )}
+        {!refCount && <p className="muted small layer-note">{t(lang, "noRefFields")}</p>}
+      </LayerSwitch>
+      <LayerSwitch title={t(lang, "alerts")} tip={t(lang, "tipAlerts")} on={alertsOpen} testId="alerts-toggle" onClick={onAlerts}>
+        {alertsOpen && alertCode && (
+          <div className="legend-item">
+            <span className="swatch" style={{ border: `2px solid ${ALERT_OUTLINE_COLOR}` }} />
+            {t(lang, "alertLegend", { label: alertLabel(lang, alertCode) })}
+          </div>
+        )}
+        {alertsOpen && !alertCode && <p className="muted small layer-note">{t(lang, "alertPick")}</p>}
+      </LayerSwitch>
+    </>
+  );
   return (
     <section className="layers" aria-label={t(lang, "mapView")} data-testid="layers">
       <Segmented
@@ -186,46 +255,33 @@ export default function LayersPanel({
           testId: `mapview-${v}`,
         }))}
       />
-      <Legend lang={lang} site={site} view={view} byDate={byDate} rasters={rasters} radarView={radarView} />
-      <Disclosure label={t(lang, "moreOptions")} testId="more-options" className="layers-more">
-        <LayerSwitch
-          title={t(lang, "colourByDate")}
-          tip={t(lang, "tipColourByDate")}
-          on={byDate}
-          testId="by-date-toggle"
-          onClick={onByDate}
-        />
-        <RadarControl index={rasters} settings={radar} view={radarView} onChange={onRadar} />
-        <LayerSwitch
-          title={t(lang, "referenceFields")}
-          tip={t(lang, "tipReference")}
-          on={referenceOn}
-          disabled={!refCount}
-          hint={refCount ? undefined : t(lang, "noRefFields")}
-          testId="reference-toggle"
-          onClick={onReference}
-        >
-          {referenceOn && (
-            <div className="legend-item">
-              <svg width={14} height={14} aria-hidden="true">
-                <rect x={2} y={2} width={10} height={10} fill="none" stroke={REFERENCE_CASING} strokeWidth={3.5} />
-                <rect x={2} y={2} width={10} height={10} fill="none" stroke={REFERENCE_COLOR} strokeWidth={1.5} strokeDasharray="3 2" />
-              </svg>
-              {t(lang, "refLegend", { n: refCount })}
-            </div>
-          )}
-          {!refCount && <p className="muted small layer-note">{t(lang, "noRefFields")}</p>}
-        </LayerSwitch>
-        <LayerSwitch title={t(lang, "alerts")} tip={t(lang, "tipAlerts")} on={alertsOpen} testId="alerts-toggle" onClick={onAlerts}>
-          {alertsOpen && alertCode && (
-            <div className="legend-item">
-              <span className="swatch" style={{ border: `2px solid ${ALERT_OUTLINE_COLOR}` }} />
-              {t(lang, "alertLegend", { label: alertLabel(lang, alertCode) })}
-            </div>
-          )}
-          {alertsOpen && !alertCode && <p className="muted small layer-note">{t(lang, "alertPick")}</p>}
-        </LayerSwitch>
-      </Disclosure>
+      {compact ? (
+        // Phones and tablets: the legend in one line and a More options button beside it,
+        // which opens the full legend and the options under it.
+        <>
+          <div className={`legend-row${moreOpen ? " open" : ""}`}>
+            {legend(!moreOpen && !docked)}
+            <button
+              type="button"
+              className={`icon-btn legend-more${moreOpen ? " on" : ""}`}
+              aria-label={t(lang, "moreOptions")}
+              aria-expanded={moreOpen}
+              data-testid="more-options"
+              onClick={() => setMoreOpen(!moreOpen)}
+            >
+              <Icon name={moreOpen ? "close" : "layers"} size={20} />
+            </button>
+          </div>
+          {moreOpen && <div className="layers-more-body">{options}</div>}
+        </>
+      ) : (
+        <>
+          {legend(false)}
+          <Disclosure label={t(lang, "moreOptions")} testId="more-options" className="layers-more">
+            {options}
+          </Disclosure>
+        </>
+      )}
     </section>
   );
 }

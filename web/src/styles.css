@@ -607,44 +607,280 @@ a { color: var(--accent); }
   .find .input { width: 180px; }
   .timeline-count .timeline-label { display: none; }
 }
-@media (max-width: 700px) {
-  :root { --panel-w: 0px; }
-  .topbar { height: auto; min-height: var(--topbar-h); flex-wrap: wrap; gap: 6px 8px; padding: 8px 12px; }
-  .brand h1 { font-size: 16px; }
-  .site-field { margin-left: auto; }
-  .view-switch { flex: 1 1 100%; }
-  .view-switch button { flex: 1; }
-  .topbar-right { margin-left: 0; width: 100%; gap: 8px; }
-  .topbar-right .seg { margin-right: auto; }
-  .find { flex: 1; min-width: 0; }
-  .find .input { width: 100%; min-width: 0; }
-  /* diagnostic status: still in the page, not shown on a phone */
-  .status { display: none; }
-  /* one scrolling page: map at a fixed height, timeline, season drawer, then the detail panel */
-  .main:not(.ops-main) { display: block; overflow-y: auto; }
-  .map-col { min-height: 0; }
-  .map-area { height: 52vh; min-height: 300px; }
-  .panel { width: 100%; height: auto; overflow: visible; border-left: 0; border-top: 1px solid var(--border); padding: 12px 16px; }
-  .layers { width: calc(100% - 64px); }
-  .view-seg button { font-size: 13px; height: 34px; }
-  .guide { position: fixed; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 75vh; overflow-y: auto; z-index: 50; }
-  .tour-card, .ops-main .tour-card { position: fixed; left: 8px; right: 8px; bottom: 8px; width: auto; z-index: 50; }
-  .timeline { flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; }
-  .timeline-track { order: 5; flex-basis: 100%; }
-  .timeline-count { margin-left: auto; }
-  .timeline-count .timeline-label { display: none; }
-  .season, .season.expanded { height: auto; padding: 8px 12px; }
-  .season-body.two { grid-template-columns: minmax(0, 1fr); }
+/* ---------- phones and tablets (docs/DESIGN.md, Phones and tablets) ----------
+   The same queries as COMPACT and SHEET in ui.tsx. Compact: a phone (portrait or landscape) or
+   a tablet in portrait; the app fills the dynamic viewport, controls are at least 44 px, form
+   fields 16 px (no zoom on focus in iOS), the top bar keeps the logo, the site and the screen
+   switch and puts the rest behind a menu. Sheet (narrow, not short): the detail panel is a
+   bottom sheet. Short (a phone in landscape): a narrow side panel. */
+.label-short, .timeline-unit { display: none; }
+.radar-handle svg { pointer-events: none; }
+@media (max-width: 899px), (max-height: 520px) {
+  :root { --topbar-h: 56px; }
+  html, body { overscroll-behavior: none; }
+  .app { height: 100vh; height: 100dvh; padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+
+  /* touch targets and form fields */
+  .btn, .btn-sm { height: 44px; padding: 0 14px; font-size: 15px; }
+  .icon-btn { width: 44px; height: 44px; }
+  .select, .input, .field-row .select { height: 44px; font-size: 16px; }
+  .seg button, .seg-sm button { height: 44px; padding: 0 12px; font-size: 15px; }
+  .disclosure-btn { min-height: 44px; }
+  .check { min-height: 44px; align-items: center; font-size: 14px; }
+  .check input { margin: 0; }
+  .range-sm { height: 44px; }
+  .switch, .tip-btn { position: relative; z-index: 1; }
+  .switch::after { content: ""; position: absolute; inset: -12px -4px; }
+  .tip-btn::after { content: ""; position: absolute; inset: -13px; }
+  .note, .ops-help, .legend-label, .field-row { font-size: 14px; }
+  .chart-legend, .readout { font-size: 13px; }
+
+  /* top bar: logo, site, Explorer / Mill operations, menu */
+  .topbar {
+    height: calc(var(--topbar-h) + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 12px 0; gap: 8px;
+  }
+  .brand { gap: 8px; min-width: 0; }
+  .site-field { min-width: 0; flex: 0 1 auto; }
+  .site-select { min-width: 0; width: 100%; max-width: 170px; }
+  .view-switch { flex: none; }
+  .topbar-right { margin-left: auto; gap: 8px; }
+  .top-menu-btn { color: var(--text); }
+  .top-menu-btn[aria-expanded="true"] { background: var(--surface-2); }
+  .top-menu-panel {
+    position: absolute; top: 100%; right: 8px; z-index: 30; width: min(360px, calc(100vw - 16px)); margin-top: 4px;
+    display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 12px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-3);
+  }
+  .top-menu-panel[hidden] { display: none; }
+  .top-menu-panel .find { flex-wrap: wrap; }
+  .top-menu-panel .find .input { flex: 1; width: auto; min-width: 0; }
+  .find-icon { top: 14px; }
+  .top-menu-panel .seg { align-self: flex-start; }
+  .top-menu-panel .seg button { min-width: 56px; }
+  .top-menu-panel .guide-btn { justify-content: flex-start; padding: 0 8px; }
+
+  /* map: the map panel across the top, the zoom buttons at mid-height on the right (clear of
+     the panel and of the credit, which opens expanded at the bottom) */
+  .maplibregl-ctrl-group button { width: 44px !important; height: 44px !important; }
+  .maplibregl-ctrl-top-right { top: 50%; transform: translateY(-50%); }
+  /* at most 65 % of the map's height, so More options open still leaves the map in view */
+  .layers { top: 8px; left: 8px; right: 8px; width: auto; padding: 6px; gap: 4px; max-height: 65%; }
+  .view-seg button { height: 44px; padding: 0 4px; font-size: 14px; white-space: normal; line-height: 1.15; }
+  /* the legend and the More options button on one row; open, the full legend and the
+     options under it, scrolling inside the panel */
+  .legend-row { display: flex; align-items: center; gap: 4px; min-height: 44px; flex: none; }
+  .legend-row.open { align-items: flex-start; }
+  .legend-row > .legend { flex: 1; min-width: 0; }
+  .legend-row.open > .legend { padding-top: 6px; }
+  .legend-more { flex: none; color: var(--accent); }
+  .legend-more.on { background: var(--accent-soft); color: var(--accent-strong); }
+  .layers-more-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0 -6px; padding: 0 10px; border-top: 1px solid var(--border); }
+  .layers-more-body > :last-child { border-bottom: 0; }
+  /* the legend in one line: swatches and short words, the "?" in the full legend */
+  .legend-line { display: flex; align-items: center; gap: 12px; padding: 0 4px; white-space: nowrap; overflow: hidden; }
+  .legend-line > .tip { display: none; }
+  .legend.legend-line .legend-item { margin: 0; font-size: 14px; flex: none; }
+  .legend-line .legend-ramp { display: flex; align-items: center; margin: 0; flex: none; }
+  .legend-line .legend-ramp .ramp { width: 56px; }
+  .legend-line .legend-label, .legend-line .ramp-labels { display: none; }
+  .legend-bar-line { gap: 6px; }
+  .legend-bar-line .ramp { width: 56px; height: 8px; flex: none; }
+  .legend-line .legend-date { margin: 0; font-size: 14px; }
+
+  /* timeline: the date and the count on one line, then play, the slider and the season button */
+  .timeline {
+    display: grid; grid-template-columns: 48px auto minmax(0, 1fr) 44px; grid-template-areas: "date date count count" "play track track season";
+    align-items: center; gap: 4px 10px; padding: 6px 12px 6px; min-height: 0;
+  }
+  .play { grid-area: play; width: 48px; height: 48px; }
+  .timeline-date { grid-area: date; flex-direction: row; align-items: baseline; white-space: nowrap; }
+  .timeline-date .timeline-label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
+  }
+  .timeline-date strong, .timeline-count strong { font-size: 16px; }
+  .timeline-count { grid-area: count; min-width: 0; justify-content: flex-end; gap: 8px; }
+  .timeline-count [data-testid="harvest-count"] {
+    display: block; min-width: 0; max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px;
+  }
+  .timeline-fields .timeline-label, .timeline-area { display: none; }
+  .timeline-unit { display: inline; }
+  .timeline-ha { font-size: 14px; }
+  .timeline-track { grid-area: track; min-width: 0; }
+  .timeline-ends { display: none; }
+  .timeline-bars { height: 20px; margin: 0 14px -18px; }
+  #week { height: 44px; }
+  #week::-webkit-slider-runnable-track { height: 6px; }
+  #week::-webkit-slider-thumb { width: 28px; height: 28px; margin-top: -11px; }
+  #week::-moz-range-thumb { width: 24px; height: 24px; }
+  .season-btn { grid-area: season; width: 44px; padding: 0; }
+  .season-btn .btn-label {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
+  }
+
+  /* season panel: over the map, the charts stacked at full width */
+  .season, .season.expanded {
+    position: absolute; inset: 0; z-index: 9; height: auto; max-height: none; overflow-y: auto; overscroll-behavior: contain;
+    padding: 8px 16px calc(16px + env(safe-area-inset-bottom)); font-size: 14px;
+  }
+  .season-head { flex-wrap: wrap; }
+  .season-head [data-testid="season-size"] { display: none; }
+  .season-body, .season-body.two { display: flex; flex-direction: column; gap: 24px; flex: none; }
   .season-col { overflow: visible; }
-  .season-chart { min-height: 220px; }
-  .season.expanded .season-chart { min-height: 340px; }
-  /* mill operations: one scrolling column: toolbar, brief, list, then the map */
-  .ops { overflow-y: auto; }
-  .ops-body { flex: none; display: block; margin: 0 12px 12px; }
-  .ops-list { border-right: 0; overflow: visible; min-height: auto; }
-  .ops-map-wrap { height: 60vh; }
-  .ops-brief { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 12px; }
+  .season-chart, .season.expanded .season-chart { min-height: 240px; }
+  .season-plot .tick, .season-plot .axis-title { font-size: 12px; }
+  .season-note { font-size: 13px; }
+
+  /* before / after: on a touch screen the divider moves by its handle only, the map pans
+     around it (see the coarse pointer query below) */
+  .radar-side { font-size: 14px; }
+
+  /* the start-here guide and the tour's card */
+  .guide {
+    position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); width: auto;
+    max-height: 70dvh; overflow-y: auto; z-index: 50;
+  }
+  /* the tour's card under the page (App.tsx), so it covers no control it talks about */
+  .app > .tour-card, .app > .tour-card.tour-at-panel {
+    position: relative; left: auto; right: auto; bottom: auto; width: auto; flex: none; z-index: 20;
+    border-width: 1px 0 0; border-radius: 14px 14px 0 0; box-shadow: 0 -4px 16px rgba(16, 24, 40, 0.12);
+    padding: 8px 16px calc(10px + env(safe-area-inset-bottom));
+  }
+  .tour-head { margin: -4px -10px 0 0; }
+  .tour-foot { flex-wrap: wrap; gap: 4px 8px; margin-top: 6px; }
+  .tour-dots { flex: 1 1 100%; justify-content: space-between; }
+  .tour-dot { flex: 1 1 0; max-width: 44px; height: 44px; }
+  .tour-foot .btn { flex: 1 1 0; height: 48px; font-size: 16px; }
+
+  /* mill operations: one scrolling column; key numbers in a grid; tables scroll sideways
+     with the field column fixed */
+  .ops { overflow-y: auto; overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom); }
   .ops-toolbar { padding: 10px 12px; }
+  .ops-site { font-size: 14px; }
+  .ops-table th { font-size: 13px; }
+  .ops-title { flex-basis: 100%; }
+  .ops-controls { width: 100%; }
+  .stepper { height: 48px; width: 100%; }
+  .ops-date { flex: 1; justify-content: center; }
+  .ops-date .input { height: 44px; }
+  .stepper-label { font-size: 13px; }
+  .ops-controls > .btn { flex: 1 1 150px; }
+  .ops-timing { padding: 8px 12px; font-size: 14px; }
+  .ops-brief { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); padding: 12px; }
+  .ops-card-note { font-size: 13px; }
+  .ops-body { flex: none; display: flex; flex-direction: column; margin: 0 12px 12px; }
+  .ops-list { border-right: 0; overflow: visible; min-height: auto; padding: 0 12px 12px; }
+  .ops-tabs { margin: 0 -12px 8px; padding: 0 4px; }
+  .ops-tab { min-height: 48px; }
+  .ops-chip { height: 44px; padding: 0 16px; font-size: 14px; }
+  .ops-list-head { gap: 8px; }
+  .ops-table { font-size: 14px; }
+  .ops-table th { padding: 10px; }
+  .ops-table td { padding: 12px 10px; }
+  .ops-table th:first-child, .ops-table td:first-child {
+    position: sticky; left: 0; z-index: 1; background: var(--surface); box-shadow: inset -1px 0 0 var(--border);
+  }
+  .ops-table th:first-child { z-index: 2; background: var(--surface-2); }
+  .ops-table tbody tr.on { box-shadow: none; }
+  .ops-table tbody tr.on td:first-child { background: #e6fbfd; box-shadow: inset 3px 0 0 #00b8cc, inset -1px 0 0 var(--border); }
+  .ops-map-wrap { height: min(60vh, 520px); min-height: 280px; border-top: 1px solid var(--border); }
+  .ops-legend { bottom: 30px; }
+  .table td, .props, .alerts { font-size: 14px; }
+}
+/* narrow phones: the logo without the name, the short screen names (Map / Mill) */
+@media (max-width: 379px) {
+  .legend-line { gap: 8px; }
+  .legend.legend-line .legend-item { font-size: 13px; gap: 6px; }
+}
+@media (max-width: 679px) {
+  .brand h1 {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
+  }
+  .label-long { display: none; }
+  .label-short { display: inline; }
+  .view-switch button { padding: 0 10px; }
+}
+/* a touch screen, or a narrow window: the divider takes input on its handle only (44 px and
+   more), so a finger beside it pans the map */
+@media (pointer: coarse), (max-width: 899px), (max-height: 520px) {
+  .radar-divider { pointer-events: none; width: 2px; margin-left: -1px; }
+  .radar-handle { pointer-events: auto; width: 48px; height: 48px; margin-top: -24px; touch-action: none; cursor: ew-resize; }
+}
+/* narrow and not short (phones in portrait, tablets): the detail panel as a bottom sheet over
+   the map, a summary bar when closed */
+@media (max-width: 899px) and (min-height: 521px) {
+  :root { --sheet-bar-h: calc(56px + env(safe-area-inset-bottom)); }
+  .main:not(.ops-main) { flex-direction: column; }
+  .map-col { flex: 1; min-height: 0; padding-bottom: var(--sheet-bar-h); }
+  /* full width on a phone, 640 px centred on a tablet (the field chart keeps its scale) */
+  .panel.sheet {
+    position: absolute; left: max(0px, calc(50% - 320px)); right: max(0px, calc(50% - 320px)); bottom: 0; z-index: 8;
+    width: auto; height: var(--sheet-bar-h); overflow: hidden;
+    padding: 0 16px; border-left: 0; border-top: 1px solid var(--border); border-radius: 14px 14px 0 0;
+    box-shadow: 0 -4px 16px rgba(16, 24, 40, 0.12); transition: height 200ms ease;
+  }
+  .panel.sheet.sheet-open {
+    height: min(62%, 600px); overflow-y: auto; overscroll-behavior: contain; padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+  .sheet:not(.sheet-open) > :not(.sheet-bar) { display: none; }
+  .sheet-bar {
+    position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 4px; height: 56px;
+    margin: 0 -16px; padding: 0 8px 0 16px; background: var(--surface); border-radius: 14px 14px 0 0;
+  }
+  .sheet-open .sheet-bar { border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+  .sheet-toggle {
+    position: relative; flex: 1; min-width: 0; height: 56px; display: flex; align-items: center; gap: 10px;
+    padding: 0; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer;
+  }
+  .sheet-grip { position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: #c9d0d9; }
+  .sheet-title { font-size: 16px; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .sheet-sub { flex: 1; min-width: 0; font-size: 14px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .sheet-chev { margin-left: auto; color: var(--text-3); transform: rotate(180deg); transition: transform var(--ease); }
+  .sheet-open .sheet-chev { transform: none; }
+  /* the bar names the field: the panel's own heading is for screen readers */
+  .sheet section > .panel-title {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap;
+  }
+  /* a field opens on its headline sentence */
+  .sheet .field:has(> .field-lead) { display: flex; flex-direction: column; }
+  .sheet .field-lead { order: -1; margin: 0 0 8px; font-size: 22px; }
+  .sheet .site-facts .panel-title { margin-top: 0; }
+}
+/* short screens (a phone in landscape): a narrow side panel beside the map, the map panel at
+   its top (App.tsx), so the map keeps its whole height */
+@media (max-height: 520px) {
+  :root { --topbar-h: 52px; --panel-w: 300px; }
+  .panel { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .panel > .layers {
+    position: static; width: auto; max-height: none; overflow: visible; margin: 0 0 16px; padding: 0 0 12px;
+    border: 0; border-bottom: 1px solid var(--border); border-radius: 0; box-shadow: none;
+  }
+  .panel > .layers .layers-more-body { overflow: visible; margin: 0; padding: 0; }
+  .panel > .layers .legend-row { align-items: flex-start; }
+  .ssf-head, .field-head { flex-wrap: wrap; }
+  .timeline { padding: 4px 12px; }
+  /* a field opens on its headline sentence (SidePanel scrolls to it) */
+  .panel .field:has(> .field-lead) { display: flex; flex-direction: column; }
+  .panel .field-lead { order: -1; margin: 0 0 8px; font-size: 20px; }
+  /* the season panel over the map column only, the side panel stays */
+  .map-col { position: relative; }
+  /* the tour's card over the lower part of the side panel: the map, the timeline and the
+     season charts stay clear */
+  .app > .tour-card, .app > .tour-card.tour-at-panel {
+    position: fixed; left: auto; right: 0; bottom: 0; width: calc(var(--panel-w) + env(safe-area-inset-right));
+    max-height: calc(100% - var(--topbar-h) - 8px); overflow-y: auto; border-width: 1px 0 0 1px; border-radius: 14px 0 0 0;
+    padding: 6px calc(12px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) 12px;
+  }
+  .tour-title { font-size: 15px; margin: 0 0 2px; }
+  .tour-caption { font-size: 14px; }
+  .tour-foot { margin-top: 4px; }
+  .tour-foot .btn { height: 44px; }
+  /* the step dots stay off here ("Step n of 9", Back and Next remain): the card stays short */
+  .tour-card .tour-dots { display: none; }
+  /* Mill operations has no side panel: the card under the page at full width */
+  .app:has(> .ops-main) > .tour-card {
+    position: relative; right: auto; width: auto; max-height: none; border-width: 1px 0 0; border-radius: 14px 14px 0 0;
+    padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right));
+  }
 }
 
 /* ---------- weekly report (WeeklyReport.tsx): one A4 / Letter column on screen and on paper ---------- */
@@ -659,6 +895,9 @@ a { color: var(--accent); }
 .report h1 { font-size: 18px; margin: 0; font-weight: 650; }
 .report h2 { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 4px; color: var(--accent-strong); font-weight: 650; }
 .report-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; border-bottom: 2px solid var(--text); padding-bottom: 6px; }
+.report-mark { flex: none; margin-top: 1px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.report-head-text { flex: 1; min-width: 0; }
+.report-product { font-size: 9px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-strong); line-height: 1.2; }
 .report-site { font-size: 12px; margin-top: 2px; color: var(--text-2); }
 .report-sub { font-size: 12px; margin-top: 2px; }
 .report-replay { font-size: 11px; padding: 2px 8px; border: 1px solid var(--warn-border); background: var(--warn-bg); color: var(--warn-text); border-radius: 10px; white-space: nowrap; }
@@ -689,6 +928,36 @@ a { color: var(--accent); }
 .report-method li { margin: 1px 0; }
 .report a { color: var(--accent); overflow-wrap: anywhere; }
 .report-foot { margin-top: 12px; padding-top: 4px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 12px; color: var(--text-3); font-size: 9px; }
+/* a phone or a narrow window: the report as one readable column, without the page frame */
+@media screen and (max-width: 899px) {
+  .report-page { padding: 0 0 24px; }
+  .report-toolbar { max-width: none; margin: 0; padding: 12px 16px; }
+  .report { max-width: none; margin: 0; padding: 16px; box-shadow: none; border-radius: 0; font-size: 14px; line-height: 1.45; }
+  .report h1 { font-size: 20px; }
+  .report h2 { font-size: 13px; margin-bottom: 6px; }
+  /* the mark and the title on one row, the replay pill under the title */
+  .report-head { flex-wrap: wrap; column-gap: 12px; row-gap: 6px; }
+  .report-head-text { flex: 1 1 calc(100% - 60px); }
+  .report-replay { margin-left: 48px; }
+  .report-product { font-size: 11px; }
+  .report-site, .report-sub { font-size: 14px; }
+  .report-replay { font-size: 12px; white-space: normal; }
+  .report-section { margin-top: 18px; }
+  .report-numbers { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .report-num { padding: 8px 10px; }
+  .report-num-label { font-size: 11px; }
+  .report-num-value { font-size: 18px; }
+  .report-num-note { font-size: 12px; }
+  .report-charts { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .report-charts figcaption { font-size: 14px; }
+  .report-note, .report-context, .report-legends { font-size: 13px; }
+  .report-table-wrap { overflow-x: auto; }
+  .report-table { font-size: 14px; }
+  .report-table th, .report-table td { padding: 6px 14px 6px 0; }
+  .report-method { font-size: 14px; }
+  .report-method ul { padding-left: 18px; }
+  .report-foot { flex-direction: column; gap: 4px; font-size: 12px; }
+}
 @page { margin: 12mm; }
 @media print {
   .no-print { display: none !important; }
@@ -697,6 +966,8 @@ a { color: var(--accent); }
   .report-page { background: none; padding: 0; overflow: visible; }
   .report { max-width: none; padding: 0; box-shadow: none; }
   .report-section h2 { break-after: avoid; }
+  /* on paper the mark alone, beside the title: the header keeps its height (two pages) */
+  .report-product { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

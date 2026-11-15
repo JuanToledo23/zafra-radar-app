@@ -98,7 +98,8 @@ export default function TimeSeriesChart(p: Props) {
         role="img"
         aria-label={t(lang, "overTime", { y: p.yTitle })}
         onPointerMove={onMove}
-        onPointerLeave={() => setHover(null)}
+        onPointerDown={onMove}
+        onPointerLeave={(e) => e.pointerType === "mouse" && setHover(null)}
       >
         <defs>
           <clipPath id={clipId}>

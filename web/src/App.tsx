@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AlertRow } from "./alerts";
 import FindField from "./FindField";
 import Guide, { guideDismissed } from "./Guide";
-import { Icon } from "./icons";
+import { BrandMark, Icon } from "./icons";
 import LayersPanel from "./LayersPanel";
 import MapView, { type CameraRequest } from "./MapView";
 import OpsView from "./OpsView";
 import SeasonPanel, { type Weekly } from "./SeasonPanel";
 import SidePanel, { type SeasonSoFar } from "./SidePanel";
 import TimeSlider from "./TimeSlider";
+import TopMenu from "./TopMenu";
 import TourCard from "./TourCard";
 import type { BasemapState } from "./basemap";
 import { LANGS, LangContext, t, tValue, type Key, type Lang } from "./i18n";
@@ -28,7 +29,7 @@ import { cachedFetch } from "./prefetch";
 import type { ReferenceCollection } from "./reference";
 import { cumulativeHarvests, stepIndex, toDay, weekHarvests, weekSteps } from "./season";
 import { SCENES, preloadTour, type Scene } from "./tour";
-import { Segmented, reducedMotion } from "./ui";
+import { COMPACT, SHEET, Segmented, reducedMotion, useMedia } from "./ui";
 
 // Subset of GET /sites used by the map and the season panel (docs/API.md).
 export type Site = {
@@ -130,6 +131,12 @@ export default function App() {
   const [mapReady, setMapReady] = useState<string | null>(null); // site whose map has rendered
   const [rastersSite, setRastersSite] = useState<string | null>(null); // site of the loaded radar index
   const [seasonNext, setSeasonNext] = useState(false); // open the season panel once the scene's camera is set
+  // Phones and tablets: the top bar's menu, and the detail panel as a bottom sheet, open or not.
+  const compact = useMedia(COMPACT);
+  const sheet = useMedia(SHEET);
+  const short = compact && !sheet;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
     fetch("/api/health")
@@ -292,6 +299,16 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [playing, at, steps]);
 
+  // The sheet opens on a field (a tap on the map, Find field, an alert, a tour scene) and on
+  // the alerts list; clearing the field closes it again, back to the map.
+  useEffect(() => {
+    if (selected) setSheetOpen(true);
+    else if (!alertsOpen) setSheetOpen(false);
+  }, [selected]);
+  useEffect(() => {
+    if (alertsOpen) setSheetOpen(true);
+  }, [alertsOpen]);
+
   // A day picked on a season chart: the first slider Sunday on or after it, clamped to the season.
   const pickDay = (d: number) => {
     setPlaying(false);
@@ -328,6 +345,7 @@ export default function App() {
     setPlaying(false);
     setAutoplay("off");
     setGuideOpen(false);
+    setMenuOpen(false);
     setAlertsOpen(false);
     setAlertCode(null);
     setByDate(false);
@@ -412,18 +430,75 @@ export default function App() {
     Object.assign(window, { __tour: { step: tour, pending: pending !== null } });
   }, [tour, pending]);
 
+  // The map panel: over the map, or at the top of the side panel on a short screen (a phone
+  // in landscape), where the map has little height.
+  const layersPanel = (
+    <LayersPanel
+      docked={short}
+      site={site}
+      view={mapView}
+      onView={(v) => {
+        // entering a radar view from the harvest map opens on the site's radar area
+        if (mapView === "harvest" && v !== "harvest") setCamera({ target: "radar", animate: true });
+        setRadar(viewPreset(v, rasters, radar));
+      }}
+      byDate={byDate}
+      onByDate={() => setByDate(!byDate)}
+      reference={reference}
+      referenceOn={referenceOn}
+      onReference={() => setReferenceOn(!referenceOn)}
+      alertsOpen={alertsOpen}
+      alertCode={alertCode}
+      onAlerts={toggleAlerts}
+      rasters={rasters}
+      radar={radar}
+      radarView={radarView}
+      onRadar={setRadar}
+    />
+  );
   const tourCard = tour !== null && <TourCard step={tour} presenter={PRESENTER} onGo={goTo} onClose={leaveTour} />;
+  const findField = view === "explorer" && (
+    <FindField
+      siteId={siteId}
+      reference={reference}
+      onFound={(sel, bbox) => {
+        if (sel?.kind === "reference") setReferenceOn(true);
+        setSelected(sel);
+        setZoomTo({ bbox });
+        setMenuOpen(false);
+      }}
+    />
+  );
+  const langSwitch = (
+    <Segmented
+      label={t(lang, "language")}
+      size="sm"
+      value={lang}
+      onChange={(l) => {
+        setLang(l);
+        if (tour !== null && !SCENES[tour].state.lang) setTourLang(l); // the tour follows the switch
+      }}
+      options={LANGS.map((l) => ({ value: l, label: l.toUpperCase(), testId: `lang-${l}` }))}
+    />
+  );
+  const tourButton = !PRESENTER && (
+    <button
+      type="button"
+      className="btn btn-ghost btn-sm guide-btn"
+      aria-pressed={tour !== null}
+      data-testid="tour-start"
+      onClick={() => (tour === null ? goTo(0) : leaveTour())}
+    >
+      <Icon name="help" /> {t(lang, "takeTour")}
+    </button>
+  );
 
   return (
     <LangContext.Provider value={lang}>
     <div className="app" lang={lang}>
       <header className="topbar">
         <div className="brand">
-          <svg className="brand-mark" width={28} height={28} viewBox="0 0 32 32" aria-hidden="true">
-            <rect width="32" height="32" rx="8" fill="currentColor" />
-            <path d="M9 23a10 10 0 0 1 14-14M12.5 23a6.5 6.5 0 0 1 9-9" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" />
-            <circle cx="23" cy="23" r="2.6" fill="#fff" />
-          </svg>
+          <BrandMark size={28} />
           <h1>Zafra Radar</h1>
         </div>
         <label className="site-field">
@@ -453,32 +528,30 @@ export default function App() {
           onChange={switchView}
           options={(["explorer", "ops"] as View[]).map((v) => ({
             value: v,
-            label: t(lang, v),
+            // a narrow phone shows the short name (Map / Mill)
+            label: (
+              <>
+                <span className="label-long">{t(lang, v)}</span>
+                <span className="label-short">{t(lang, v === "explorer" ? "explorerShort" : "opsShort")}</span>
+              </>
+            ),
             testId: `view-${v}`,
           }))}
         />
         <div className="topbar-right">
-          {view === "explorer" && (
-            <FindField
-              siteId={siteId}
-              reference={reference}
-              onFound={(sel, bbox) => {
-                if (sel?.kind === "reference") setReferenceOn(true);
-                setSelected(sel);
-                setZoomTo({ bbox });
-              }}
-            />
+          {compact ? (
+            // Phones and tablets: Find field, the language and the tour behind one menu.
+            <TopMenu open={menuOpen} onOpen={setMenuOpen}>
+              {findField}
+              {langSwitch}
+              {tourButton}
+            </TopMenu>
+          ) : (
+            <>
+              {findField}
+              {langSwitch}
+            </>
           )}
-          <Segmented
-            label={t(lang, "language")}
-            size="sm"
-            value={lang}
-            onChange={(l) => {
-              setLang(l);
-              if (tour !== null && !SCENES[tour].state.lang) setTourLang(l); // the tour follows the switch
-            }}
-            options={LANGS.map((l) => ({ value: l, label: l.toUpperCase(), testId: `lang-${l}` }))}
-          />
           {/* Kept for the headless checks (scripts/screenshot.mjs), not shown. */}
           <div className="status sr-only" aria-label={t(lang, "connection")}>
             <span className={`status-item status-${basemap}`} data-testid="basemap-state" title="Map background">
@@ -488,23 +561,13 @@ export default function App() {
               api: {api}
             </span>
           </div>
-          {!PRESENTER && (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm guide-btn"
-              aria-pressed={tour !== null}
-              data-testid="tour-start"
-              onClick={() => (tour === null ? goTo(0) : leaveTour())}
-            >
-              <Icon name="help" /> {t(lang, "takeTour")}
-            </button>
-          )}
+          {!compact && tourButton}
         </div>
       </header>
       {view === "ops" ? (
         <main className="main ops-main">
           {site && asOf !== null && <OpsView site={site} day={asOf} onDay={setAsOf} lang={lang} />}
-          {tourCard}
+          {!compact && tourCard}
         </main>
       ) : (
         <main className={`main${seasonOpen ? " season-open" : ""}${seasonOpen && seasonExpanded ? " season-expanded" : ""}`}>
@@ -535,27 +598,7 @@ export default function App() {
                   startAutoplay(id);
                 }}
               />
-              <LayersPanel
-                site={site}
-                view={mapView}
-                onView={(v) => {
-                  // entering a radar view from the harvest map opens on the site's radar area
-                  if (mapView === "harvest" && v !== "harvest") setCamera({ target: "radar", animate: true });
-                  setRadar(viewPreset(v, rasters, radar));
-                }}
-                byDate={byDate}
-                onByDate={() => setByDate(!byDate)}
-                reference={reference}
-                referenceOn={referenceOn}
-                onReference={() => setReferenceOn(!referenceOn)}
-                alertsOpen={alertsOpen}
-                alertCode={alertCode}
-                onAlerts={toggleAlerts}
-                rasters={rasters}
-                radar={radar}
-                radarView={radarView}
-                onRadar={setRadar}
-              />
+              {!short && layersPanel}
               {guideOpen && (
                 <Guide
                   onClose={() => setGuideOpen(false)}
@@ -566,7 +609,7 @@ export default function App() {
                   onTour={() => goTo(0)}
                 />
               )}
-              {tourCard}
+              {!compact && tourCard}
             </div>
             {day !== null && (
               <TimeSlider
@@ -599,6 +642,10 @@ export default function App() {
             )}
           </div>
           <SidePanel
+            top={short ? layersPanel : null}
+            sheet={sheet}
+            sheetOpen={sheetOpen}
+            onSheet={setSheetOpen}
             site={site}
             season={season}
             selected={selected}
@@ -617,6 +664,8 @@ export default function App() {
           />
         </main>
       )}
+      {/* Phones and tablets: the tour's card under the page, so it covers no control. */}
+      {compact && tourCard}
     </div>
     </LangContext.Provider>
   );
