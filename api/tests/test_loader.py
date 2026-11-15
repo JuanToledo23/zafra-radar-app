@@ -47,18 +47,6 @@ def test_segment_record_rejects_unmapped_property():
         L.segment_record({**PROPS, "cane_confidence": "high"})
 
 
-def test_burn_window_only_when_the_rule_is_enabled():
-    bw = {"default": ["09:00", "17:00"], "default_confirmed": False,
-          "municipalities": {"Tlaquiltenango": ["09:00", "17:00"]}}
-    on = {"timezone": "America/Mexico_City", "burn_window": bw,
-          "rules": {"FIRE_ACTIVE_OUTSIDE_HOURS": {"enabled": True, "severity": "warning"}}}
-    assert L.burn_window_of({**CFG, "alerts": on}) == bw
-    off = {**on, "rules": {"FIRE_ACTIVE_OUTSIDE_HOURS": {"enabled": False}}}
-    assert L.burn_window_of({**CFG, "alerts": off}) is None
-    assert L.burn_window_of({**CFG, "alerts": {**on, "burn_window": None}}) is None  # Brazil
-    assert L.burn_window_of(CFG) is None
-
-
 def test_site_info_and_paths():
     info = L.site_info(CFG)
     assert info == {"site_id": "morelos", "name": "Ingenio Emiliano Zapata supply area",

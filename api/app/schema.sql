@@ -22,9 +22,10 @@ ALTER TABLE sites ADD COLUMN IF NOT EXISTS alert_rules jsonb;
 -- window the library keeps fires in (zafra.summary.field_facts). Mill operations (/ops).
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS season_start date;
 ALTER TABLE sites ADD COLUMN IF NOT EXISTS season_end date;
--- alerts.burn_window of the config (local permitted burning hours) when the config enables
--- FIRE_ACTIVE_OUTSIDE_HOURS; NULL otherwise (Brazil: no window).
-ALTER TABLE sites ADD COLUMN IF NOT EXISTS burn_window jsonb;
+-- Dropped with the burned-and-not-harvested list of the mill operations screen (fire
+-- detections cannot be attributed to single fields: docs/FINDINGS.md); removed from databases
+-- created before.
+ALTER TABLE sites DROP COLUMN IF EXISTS burn_window;
 
 CREATE TABLE IF NOT EXISTS segments (
     site_id               text NOT NULL REFERENCES sites (site_id) ON DELETE CASCADE,
@@ -47,17 +48,11 @@ CREATE INDEX IF NOT EXISTS segments_geom_gist ON segments USING gist (geom);
 CREATE INDEX IF NOT EXISTS segments_site_date ON segments (site_id, harvest_date);
 -- Distinct codes of the segment's rows in `alerts`, sorted; set by app.loader for the tiles.
 ALTER TABLE segments ADD COLUMN IF NOT EXISTS alert_codes text[] NOT NULL DEFAULT '{}';
--- Season fires: FIRMS detections within 200 m of the segment (on the geography) inside the
--- site's season window; set by app.loader after `fires`. Dates are local dates
--- (sites.timezone), one per day with a detection, sorted; empty / NULL without season fires.
--- The day numbers (days since 1970-01-01) go into the tiles for the mill operations map.
-ALTER TABLE segments ADD COLUMN IF NOT EXISTS season_fire_dates date[] NOT NULL DEFAULT '{}';
-ALTER TABLE segments ADD COLUMN IF NOT EXISTS first_fire_date date;
-ALTER TABLE segments ADD COLUMN IF NOT EXISTS last_fire_date date;
-ALTER TABLE segments ADD COLUMN IF NOT EXISTS first_fire_day integer
-    GENERATED ALWAYS AS (first_fire_date - DATE '1970-01-01') STORED;
-ALTER TABLE segments ADD COLUMN IF NOT EXISTS last_fire_day integer
-    GENERATED ALWAYS AS (last_fire_date - DATE '1970-01-01') STORED;
+-- Season fire columns of the removed burned-and-not-harvested list (docs/FINDINGS.md);
+-- dropped from databases created before. The generated day numbers go first.
+ALTER TABLE segments DROP COLUMN IF EXISTS first_fire_day, DROP COLUMN IF EXISTS last_fire_day;
+ALTER TABLE segments DROP COLUMN IF EXISTS season_fire_dates, DROP COLUMN IF EXISTS first_fire_date,
+    DROP COLUMN IF EXISTS last_fire_date;
 
 -- NISAR GCOV backscatter per acquisition, already in dB in the library files.
 CREATE TABLE IF NOT EXISTS segment_series (

@@ -11,34 +11,23 @@ from app import ops
 D = dt.date
 
 
-@pytest.mark.parametrize("days, key", [(0, "0_2"), (2, "0_2"), (3, "3_7"), (7, "3_7"),
-                                       (8, "8_14"), (14, "8_14"), (15, "over_14"),
-                                       (400, "over_14")])
-def test_bucket_edges(days, key):
-    assert ops.bucket_of(days) == key
-
-
-def test_bucket_rejects_negative():
-    with pytest.raises(ValueError):
-        ops.bucket_of(-1)
-
-
-def test_bucket_sql_matches_bucket_of():
-    sql = ops.bucket_sql("x")
-    assert sql == ("CASE WHEN x <= 2 THEN '0_2' WHEN x <= 7 THEN '3_7' WHEN x <= 14 THEN "
-                   "'8_14' ELSE 'over_14' END")
-
-
 def test_state_partition():
+    # Dated later and never dated are one state: nothing as of d tells them apart.
     d = D(2026, 2, 15)
-    assert ops.state_of(None, d) == "no_date"
+    assert ops.state_of(None, d) == "not_yet_detected"
     assert ops.state_of(D(2026, 2, 15), d) == "harvested"
-    assert ops.state_of(D(2026, 2, 16), d) == "not_yet_harvested"
+    assert ops.state_of(D(2026, 2, 16), d) == "not_yet_detected"
 
 
 def test_recent_window_is_seven_days_inclusive():
     a, b = ops.recent_window(D(2026, 2, 15))
     assert (a, b) == (D(2026, 2, 9), D(2026, 2, 15)) and (b - a).days + 1 == 7
+
+
+def test_previous_window_is_the_seven_days_before():
+    assert ops.previous_window(D(2026, 2, 15)) == (D(2026, 2, 2), D(2026, 2, 8))
+    a, b = ops.recent_window(D(2026, 2, 15), 14)
+    assert (a, b) == (D(2026, 2, 2), D(2026, 2, 15))
 
 
 def test_pace_weeks_full_monday_weeks():
@@ -52,26 +41,6 @@ def test_pace_weeks_full_monday_weeks():
     assert all(a.weekday() == 0 and b.weekday() == 6 and (b - a).days == 6 for a, b in weeks)
 
 
-def test_projected_end():
-    d = D(2026, 2, 15)
-    assert ops.projected_end(d, 100.0, 0.0) is None
-    assert ops.projected_end(d, 0.0, 50.0) == d
-    assert ops.projected_end(d, 100.0, 50.0) == D(2026, 3, 1)  # two weeks
-    assert ops.projected_end(d, 101.0, 50.0) == D(2026, 3, 2)  # rounded up
-
-
-def test_fire_to_harvest_stats():
-    s = ops.fire_to_harvest_stats([-2, 0, 3, 5, 10, 20])
-    assert s["count"] == 6 and s["median"] == 4 and s["min"] == -2 and s["max"] == 20
-    assert s["q1"] == pytest.approx(0.75) and s["q3"] == pytest.approx(8.75)
-    assert s["share_within_3"] == pytest.approx(3 / 6)
-    assert s["share_over_7"] == pytest.approx(2 / 6)
-    assert s["share_over_14"] == pytest.approx(1 / 6)
-    assert s["share_negative"] == pytest.approx(1 / 6)
-    assert ops.fire_to_harvest_stats([])["median"] is None
-    assert ops.fire_to_harvest_stats([4])["q1"] == 4
-
-
 def test_csv_bytes_bom_and_cells():
     body = ops.csv_bytes(["id", "d", "codes", "x"],
                          [["cc1", D(2026, 1, 2), ["A", "B"], None], ["cc2", None, [], 1.5]])
@@ -83,5 +52,25 @@ def test_csv_bytes_bom_and_cells():
                     ["cc2", "", "", "1.5"]]
 
 
-def test_minutes():
-    assert ops.minutes("09:00") == 540 and ops.minutes("17:00") == 1020
+def test_official_as_of_uses_only_reports_cut_off_by_the_date():
+    rows = [{"report": 1, "cutoff": D(2025, 11, 22), "cum_ha": 0.0, "cum_cane_t": 0.0},
+            {"report": 2, "cutoff": D(2025, 11, 29), "cum_ha": 174.0, "cum_cane_t": 16576.0},
+            {"report": 3, "cutoff": D(2025, 12, 6), "cum_ha": 434.0, "cum_cane_t": 57264.0}]
+    assert ops.official_as_of(rows, D(2025, 11, 28)) is None  # only a report with 0 ha
+    assert ops.official_as_of(rows, D(2025, 11, 29))["report"] == 2
+    assert ops.official_as_of(rows, D(2025, 12, 5))["report"] == 2  # report 3 not cut off yet
+    assert ops.official_as_of(rows, D(2026, 5, 1))["report"] == 3
+    assert ops.official_as_of([], D(2026, 5, 1)) is None
+
+
+def test_yield_to_date():
+    assert ops.yield_to_date({"cum_ha": 9565.0, "cum_cane_t": 915365.0}) == pytest.approx(95.6994, abs=1e-4)
+    assert ops.yield_to_date({"cum_ha": 0.0, "cum_cane_t": 0.0}) is None
+    assert ops.yield_to_date(None) is None
+
+
+def test_night_is_before_six_local():
+    assert ops.is_night(dt.datetime(2026, 2, 15, 2, 6))
+    assert ops.is_night(dt.datetime(2026, 2, 15, 5, 59))
+    assert not ops.is_night(dt.datetime(2026, 2, 15, 6, 0))
+    assert not ops.is_night(dt.datetime(2026, 2, 15, 13, 53))

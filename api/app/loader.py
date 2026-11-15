@@ -117,20 +117,6 @@ def site_info(cfg: dict) -> dict:
     }
 
 
-def burn_window_of(cfg: dict):
-    """alerts.burn_window of the config when FIRE_ACTIVE_OUTSIDE_HOURS is enabled there and a
-    window is configured, else None (the rule cannot fire: zafra.alerts.fire_active_outside_hours)."""
-    alerts = cfg.get("alerts") or {}
-    rule = (alerts.get("rules") or {}).get("FIRE_ACTIVE_OUTSIDE_HOURS") or {}
-    bw = alerts.get("burn_window")
-    if not rule.get("enabled") or not bw or not bw.get("default"):
-        return None
-    return clean_json({"default": [str(t) for t in bw["default"]],
-                       "default_confirmed": bool(bw.get("default_confirmed", False)),
-                       "municipalities": {k: [str(t) for t in v]
-                                          for k, v in (bw.get("municipalities") or {}).items()}})
-
-
 def site_paths(cfg: dict) -> dict:
     """Input paths relative to ZAFRA_DATA, from the site config (as the library resolves them)."""
     site, p = cfg["name"], cfg["paths"]
@@ -449,42 +435,6 @@ async def load_fires(conn, site: str, files: list, tz: str) -> None:
         " ORDER BY s.segment_id LIMIT 1) WHERE f.site_id = $1", site)
 
 
-# Season fires per segment: detections within FIRE_BUFFER_M of the polygon on the geography
-# (as /segments and the library's fires_cane buffer) whose UTC instant is inside the season
-# window [start, end) taken at 00:00 UTC, as zafra.summary.field_facts filters acq_utc. Each
-# fire is dated by its local date (sites.timezone). The bounding-box prefilter (0.01°) is
-# wider than 200 m below about 80° latitude, so ST_DWithin decides.
-FIRE_BUFFER_M = 200
-SEASON_FIRES_SQL = """
-UPDATE segments s SET season_fire_dates = f.dates, first_fire_date = f.dates[1],
-       last_fire_date = f.dates[cardinality(f.dates)]
-FROM (
-    SELECT g.segment_id,
-           array_agg(DISTINCT x.datetime_local::date ORDER BY x.datetime_local::date) AS dates
-    FROM segments g
-    JOIN sites t ON t.site_id = g.site_id
-    JOIN fires x ON x.site_id = g.site_id
-    WHERE g.site_id = $1
-      AND x.datetime_utc >= t.season_start::timestamp AT TIME ZONE 'UTC'
-      AND x.datetime_utc < t.season_end::timestamp AT TIME ZONE 'UTC'
-      AND x.geom && ST_Expand(g.geom, 0.01)
-      AND ST_DWithin(x.geom::geography, g.geom::geography, $2)
-    GROUP BY g.segment_id
-) f
-WHERE s.site_id = $1 AND s.segment_id = f.segment_id
-"""
-
-
-async def load_season_fires(conn, site: str) -> None:
-    """segments.season_fire_dates, first_fire_date and last_fire_date (SEASON_FIRES_SQL)."""
-    await conn.execute(SEASON_FIRES_SQL, site, FIRE_BUFFER_M)
-    r = await conn.fetchrow(
-        "SELECT count(*) FILTER (WHERE first_fire_date IS NOT NULL) AS n, min(first_fire_date)"
-        " AS lo, max(last_fire_date) AS hi FROM segments WHERE site_id = $1", site)
-    log(f"[{site}] season fires: {r['n']} segments with a detection within {FIRE_BUFFER_M} m,"
-        f" {r['lo']} .. {r['hi']}")
-
-
 async def load_reference(conn, site: str, path: Path, season, recs: list) -> None:
     """Reference fields, their dates, and the facts and summaries of their summaries.jsonl
     records (`recs`, all records of the file)."""
@@ -586,20 +536,17 @@ async def load_site(conn, root: Path, site: str, derived: Path | None = None) ->
         doc = json.loads(derived_alerts.read_text()) if derived_alerts else None
         alerts = derived_alert_rows(doc, site) if doc else []
         rules = json.dumps(alert_rules(doc)) if doc else None
-        bw = burn_window_of(cfg)
         await conn.execute(
             "INSERT INTO sites (site_id, name, season, bbox, timezone, official_final,"
-            " alert_counts, alert_rules, season_start, season_end, burn_window) VALUES ($1, $2,"
+            " alert_counts, alert_rules, season_start, season_end) VALUES ($1, $2,"
             " $3, ST_MakeEnvelope($4, $5, $6, $7, 4326), $8, $9::jsonb, $10::jsonb, $11::jsonb,"
-            " $12, $13, $14::jsonb)",
+            " $12, $13)",
             info["site_id"], info["name"], info["season"], *info["bbox"], info["timezone"],
-            final, counts, rules, info["season_start"], info["season_end"],
-            json.dumps(bw) if bw else None)
+            final, counts, rules, info["season_start"], info["season_end"])
 
         ids = await load_segments(conn, site, slim)
         await load_series(conn, site, series, coherence, ids)
         await load_fires(conn, site, firms, info["timezone"])
-        await load_season_fires(conn, site)
 
         with weekly.open(newline="") as fh:
             await conn.copy_records_to_table(
