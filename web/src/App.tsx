@@ -30,7 +30,7 @@ import {
 import { cachedFetch } from "./prefetch";
 import type { ReferenceCollection } from "./reference";
 import { cumulativeHarvests, stepIndex, toDay, weekHarvests, weekSteps } from "./season";
-import { SCENES, preloadTour, type Scene } from "./tour";
+import { SCENES, preloadTour, presenterScenes, type Scene } from "./tour";
 import { COMPACT, SHEET, Segmented, reducedMotion, useMedia } from "./ui";
 
 // Subset of GET /sites used by the map and the season panel (docs/API.md).
@@ -67,9 +67,11 @@ const VIEW_NAMES: Record<MapViewKind, string> = { harvest: "harvest map", radar:
 
 // Presenter mode (`?present=1`): the single flag for it. The tour starts on its first scene
 // with captions hidden, later scenes' data is fetched ahead, and the first visit's autoplay
-// and guide stay off. `?lang=es` or `?lang=en` sets the interface language.
+// and guide stay off. `?lang=es` or `?lang=en` sets the interface language, `?skip=7` (scene
+// numbers, comma-separated) leaves scenes out; the public tour always has them all.
 const QUERY = new URLSearchParams(window.location.search);
 export const PRESENTER = QUERY.get("present") === "1";
+const TOUR_SCENES = PRESENTER ? presenterScenes(QUERY.get("skip")) : SCENES;
 const URL_LANG = LANGS.find((l) => l === QUERY.get("lang")) ?? null;
 
 // First visit: the season plays once from the beginning when the map is ready, and stops at
@@ -353,11 +355,11 @@ export default function App() {
   // that site's map has rendered and its radar index (and, for a reference field, the
   // reference fields) have loaded, so nothing a site change resets is set too early.
   useEffect(() => {
-    if (PRESENTER) preloadTour();
+    if (PRESENTER) preloadTour(TOUR_SCENES);
   }, []);
   useEffect(() => setMapReady(null), [view, siteId]);
   const goTo = (i: number) => {
-    const scene = SCENES[i];
+    const scene = TOUR_SCENES[i];
     track("tour-step", { step: i + 1 });
     setTour(i);
     setPlaying(false);
@@ -440,7 +442,7 @@ export default function App() {
       if (e.key === "Escape") return leave();
       if (!next && !back) return;
       e.preventDefault();
-      if (next && at < SCENES.length - 1) go(at + 1);
+      if (next && at < TOUR_SCENES.length - 1) go(at + 1);
       if (back && at > 0) go(at - 1);
     };
     window.addEventListener("keydown", onKey);
@@ -449,7 +451,7 @@ export default function App() {
 
   // Read by the headless checks: the scene shown and whether it is still being applied.
   useEffect(() => {
-    Object.assign(window, { __tour: { step: tour, pending: pending !== null } });
+    Object.assign(window, { __tour: { step: tour, scene: tour === null ? null : TOUR_SCENES[tour].id, pending: pending !== null } });
   }, [tour, pending]);
 
   // The map panel: over the map, or at the top of the side panel on a short screen (a phone
@@ -479,7 +481,7 @@ export default function App() {
       onRadar={setRadar}
     />
   );
-  const tourCard = tour !== null && <TourCard step={tour} presenter={PRESENTER} onGo={goTo} onClose={leaveTour} />;
+  const tourCard = tour !== null && <TourCard scenes={TOUR_SCENES} step={tour} presenter={PRESENTER} onGo={goTo} onClose={leaveTour} />;
   const findField = view === "explorer" && (
     <FindField
       siteId={siteId}
@@ -500,7 +502,7 @@ export default function App() {
       onChange={(l) => {
         if (l !== lang) track("language-changed", { language: l });
         setLang(l);
-        if (tour !== null && !SCENES[tour].state.lang) setTourLang(l); // the tour follows the switch
+        if (tour !== null && !TOUR_SCENES[tour].state.lang) setTourLang(l); // the tour follows the switch
       }}
       options={LANGS.map((l) => ({ value: l, label: l.toUpperCase(), testId: `lang-${l}` }))}
     />

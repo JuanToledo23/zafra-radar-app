@@ -1,23 +1,25 @@
 import { track } from "./analytics";
 import { t, useLang } from "./i18n";
 import { Icon } from "./icons";
-import { LINKS, SCENES } from "./tour";
+import { LINKS, type Scene } from "./tour";
 
 // The tour's card. Public tour: the scene's title and caption, Back / Next, one dot per scene
 // and a close button. Presenter mode: only a discreet step indicator (the speaker carries the
-// captions), except the closing scene's links.
+// captions), except the closing scene's links. `scenes`: the tour's scenes (presenter mode may
+// leave some out).
 
 type Props = {
+  scenes: Scene[];
   step: number;
   presenter: boolean;
   onGo: (i: number) => void;
   onClose: () => void;
 };
 
-export default function TourCard({ step, presenter, onGo, onClose }: Props) {
+export default function TourCard({ scenes, step, presenter, onGo, onClose }: Props) {
   const lang = useLang();
-  const scene = SCENES[step];
-  const last = step === SCENES.length - 1;
+  const scene = scenes[step];
+  const last = step === scenes.length - 1;
   const links = scene.closing && (
     <ul className="tour-links" data-testid="tour-links">
       <li>
@@ -42,7 +44,7 @@ export default function TourCard({ step, presenter, onGo, onClose }: Props) {
           </section>
         )}
         <div className="tour-step" data-testid="tour-step" aria-live="polite">
-          {t(lang, "tourStepShort", { n: step + 1, of: SCENES.length })}
+          {t(lang, "tourStepShort", { n: step + 1, of: scenes.length })}
         </div>
       </>
     );
@@ -50,7 +52,7 @@ export default function TourCard({ step, presenter, onGo, onClose }: Props) {
   return (
     <section className={`tour-card${scene.card ? ` tour-at-${scene.card}` : ""}`} role="dialog" aria-labelledby="tour-title" data-testid="tour-card" data-scene={scene.id}>
       <div className="tour-head">
-        <span className="tour-count">{t(lang, "tourStep", { n: step + 1, of: SCENES.length })}</span>
+        <span className="tour-count">{t(lang, "tourStep", { n: step + 1, of: scenes.length })}</span>
         <button type="button" className="icon-btn" aria-label={t(lang, "tourLeave")} data-testid="tour-close" onClick={onClose}>
           <Icon name="close" />
         </button>
@@ -61,7 +63,7 @@ export default function TourCard({ step, presenter, onGo, onClose }: Props) {
       {scene.closing && <p className="tour-privacy" data-testid="tour-privacy">{t(lang, "tourPrivacy")}</p>}
       <div className="tour-foot">
         <div className="tour-dots" role="group" aria-label={t(lang, "tourScenes")}>
-          {SCENES.map((s, i) => (
+          {scenes.map((s, i) => (
             <button
               key={s.id}
               type="button"

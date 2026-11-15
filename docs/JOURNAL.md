@@ -240,3 +240,8 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
   but the API reads `$ZAFRA_DATA/data/tiles` with `ZAFRA_DATA=/srv/zafra/data`; the
   destination is now `/srv/zafra/data/data/tiles/`, as the remote data directory mirrors the
   library root. The derived overview tiles' destination was already right and is unchanged.
+
+## 2026-11-15 11:08 CST
+
+- Presenter mode takes `?skip=` (scene numbers, comma-separated) to leave scenes out going
+  forward and back, in the step indicator and in preloading; the public tour keeps all nine.

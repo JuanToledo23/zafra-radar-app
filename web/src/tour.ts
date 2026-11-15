@@ -152,14 +152,24 @@ function tilesOf([w, s, e, n]: [number, number, number, number], z: number): [nu
   return out;
 }
 
-/** Presenter mode: everything the later scenes load, fetched while the first is shown. */
-export function preloadTour() {
+/** Presenter mode's scenes: all but those `?skip=` leaves out, as comma-separated scene
+ * numbers from 1 (others are ignored; leaving out every scene leaves out none). */
+export function presenterScenes(skip: string | null): Scene[] {
+  const out = new Set((skip ?? "").split(",").map((n) => Number(n.trim())));
+  const kept = SCENES.filter((_, i) => !out.has(i + 1));
+  return kept.length ? kept : SCENES;
+}
+
+/** Presenter mode: everything the given scenes load, fetched while the first is shown. */
+export function preloadTour(scenes: Scene[]) {
   const api = "/api";
-  for (const site of new Set(SCENES.map((s) => s.state.site))) {
+  for (const site of new Set(scenes.map((s) => s.state.site))) {
     ["weekly", "reference", "rasters"].forEach((k) => prefetch(`${api}/${k}/${site}`));
   }
-  prefetch(`${api}/segments/morelos/${encodeURIComponent(EXAMPLE_FIELD)}`);
-  for (const s of SCENES) {
+  for (const s of scenes)
+    if (s.state.selected?.kind === "segment")
+      prefetch(`${api}/segments/${s.state.site}/${encodeURIComponent(s.state.selected.id)}`);
+  for (const s of scenes) {
     if (s.state.view !== "ops") continue;
     const ops = `${api}/ops/${s.state.site}`;
     const at = s.state.timeline;
@@ -170,6 +180,7 @@ export function preloadTour() {
   }
   // The Before / after scene's two images over the radar area and around it (the tiles are
   // sent with Cache-Control, so the browser keeps them).
+  if (!scenes.some((s) => s.state.mapView === "compare" && s.state.site === "morelos")) return;
   cachedFetch(`${api}/rasters/morelos`)
     .then((r) => (r.ok ? r.json() : null))
     .then((idx: RasterIndex | null) => {

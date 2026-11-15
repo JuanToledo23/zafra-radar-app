@@ -144,6 +144,7 @@ reference field p36, mill operations in Spanish, Brazil, and links to the findin
   `http://localhost:5174/?present=1`), with `&lang=es` or `&lang=en`. Starts on scene 1 with
   captions hidden and a small step indicator, no first-visit autoplay or guide, and fetches
   what later scenes need while the first is shown.
+* **Skipping scenes (presenter only):** `&skip=7` (scene numbers, comma-separated) leaves scenes out.
 * **Keys:** right arrow, Space or PageDown for the next scene; left arrow or PageUp for the
   previous one (presentation remotes send these); Escape leaves the tour. Going back restores
   the earlier scene; inside a scene the app works as usual.
