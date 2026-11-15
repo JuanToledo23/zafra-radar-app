@@ -25,6 +25,7 @@ const PATHS = {
   chevronLeft: <path d="m15 6-6 6 6 6" />,
   chevronRight: <path d="m9 6 6 6-6 6" />,
   close: <path d="M6 6l12 12M18 6 6 18" />,
+  menu: <path d="M4 7h16M4 12h16M4 17h16" />,
   expand: <path d="M4 14v6h6M20 10V4h-6M4 20l7-7M20 4l-7 7" />,
   collapse: <path d="M10 20v-6H4M14 4v6h6M4 20l6-6M20 4l-6 6" />,
   target: (
@@ -81,6 +82,41 @@ export function Icon({ name, size = 16, className }: { name: IconName; size?: nu
       focusable="false"
     >
       {PATHS[name]}
+    </svg>
+  );
+}
+
+// The product mark (docs/DESIGN.md, Logo): a sugarcane stalk (three segments, the nodes
+// between them, one leaf) and two radar arcs, white on the accent tile. Two drawings: the full
+// one from 28 px, and one fitted to the 16-pixel grid for smaller sizes. web/public/favicon.svg
+// is the small one, apple-touch-icon.png the full one.
+const BRAND_TILE = "#1d4ed8";
+
+export function BrandMark({ size = 28, className }: { size?: number; className?: string }) {
+  const cls = `brand-mark${className ? ` ${className}` : ""}`;
+  if (size < 28)
+    return (
+      <svg className={cls} width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <rect width="16" height="16" rx="3.5" fill={BRAND_TILE} />
+        <g fill="#fff">
+          <rect x="4" y="2" width="3" height="3" rx=".5" />
+          <rect x="4" y="6" width="3" height="4" rx=".5" />
+          <rect x="4" y="11" width="3" height="3" rx=".5" />
+          <path d="M4 7.2C2.2 6.6 1.4 5 1.3 2.8C2.7 3.7 3.6 4.7 4 5.6Z" />
+        </g>
+        <path d="M9.25 5.32A3.5 3.5 0 0 1 9.25 10.68M11.52 3.32A6.5 6.5 0 0 1 11.52 12.68" fill="none" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  return (
+    <svg className={cls} width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+      <rect width="64" height="64" rx="14" fill={BRAND_TILE} />
+      <g fill="#fff">
+        <rect x="16" y="8" width="9" height="13" rx="2" />
+        <rect x="16" y="24" width="9" height="16" rx="2" />
+        <rect x="16" y="43" width="9" height="13" rx="2" />
+        <path d="M16 28.5C9 27.3 5.2 21.8 4.6 12.6C10.4 16 14.4 19.8 16 23.4Z" />
+      </g>
+      <path d="M33.36 22.04A13 13 0 0 1 33.36 41.96M40.98 15.46A23 23 0 0 1 40.98 48.54" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" />
     </svg>
   );
 }
