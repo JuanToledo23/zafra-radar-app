@@ -1,6 +1,7 @@
 # API
 
-Read-only HTTP API over the tables filled by `python -m app.loader` (see [DATA.md](../DATA.md)).
+Read-only HTTP API over the tables filled by `python -m app.loader` (see [DATA.md](../DATA.md)),
+plus `/rasters`, which serves the research library's NISAR image tiles from disk.
 Base URL `http://localhost:8010`; the web app reaches the same routes under `/api` through
 the Vite proxy. Interactive schema: `/docs`. All endpoints are `GET`. An unknown site or
 segment gives 404 with `{"detail": "..."}`. Dates are ISO strings (`YYYY-MM-DD`); missing
@@ -43,6 +44,64 @@ pixels wide (38 m at z10, 19 m at z11), and polygons that collapse are left out 
 Morelos and 162 of 12,210 Brazil segments at z10, none at z11); from z12 on the geometry is
 not simplified. 204 when the tile has no segment; 400 for non-integer or
 out-of-range `z`/`x`/`y` (`0 <= z <= 22`); 404 for an unknown site.
+
+## Radar imagery: `GET /rasters/{site}` and its tiles
+
+Read from `$ZAFRA_DATA/data/tiles/<site>/` (the library's `scripts/18_web_rasters.py`
+output, mounted read-only), not from the database. Code: `api/app/rasters.py`.
+
+### `GET /rasters/{site}`
+
+```bash
+curl http://localhost:8010/rasters/morelos
+```
+
+The site's `tiles_index.json`, normalised. 404 when the site has no tile set (also on a
+server deployed without `--with-rasters`).
+
+| key | meaning |
+|---|---|
+| `site`, `description`, `source` | from the index (`source`: product, orbit, track, frame) |
+| `dates` | the six acquisition dates, ascending |
+| `minzoom`, `maxzoom`, `bounds`, `tile_size` | 10, 14, `[west, south, east, north]` (degrees), 256 |
+| `processing` | the index's processing note |
+| `attribution` | `text`: the imagery credit; `source`: where it is taken from (library `docs/DATA_SOURCES.md:11-15, :28-30`) |
+| `library_index` | the index path relative to `ZAFRA_DATA` |
+| `layers` | 24 per site, in index order (below) |
+
+Each layer: `id`; `product` (`HV`, `HH`, `cross-ratio`, `change`) and the index `kind`
+(`hv`, `hh`, `cross`, `change`); `date` (image layers) or `date_pair` `[earlier, later]`
+(change layers; `null` otherwise); `season` (true for `hv_change_season`, lowest HV over all
+dates minus the first; its `date_pair` is the first and last date); `dates` as in the index;
+`label`, `units`, `stretch` `[lo, hi]` dB, `ramp` (stops `{at, rgb}`), `nodata`, `tiles`,
+`bytes` from the index; `minzoom`, `maxzoom`, `bounds` of the site; `tile_url` (relative to
+the API root); `meaning`: `text` (what brighter / darker or blue / red mean) and `source`
+(file and line in the library it is taken from):
+
+| product | colours | source (zafra-radar-research) |
+|---|---|---|
+| HV | grey, black −25 dB to white −8 dB; brighter = stronger backscatter (standing cane), darker = bare soil or water; HV usually drops sharply when cane is cut | `docs/GLOSSARY.md:11-13`, `:31-33`; `docs/METHODS.md:395`, `:404` |
+| HH | grey, −18 to −2 dB; brighter = rough surfaces and structured vegetation | `docs/GLOSSARY.md:11-13`; `docs/METHODS.md:396`, `:404` |
+| cross-ratio | grey, HV − HH −15 to −3 dB; cane about −5 to −6 dB, bare soil and water lower | `src/zafra/rasters.py:50`; `docs/METHODS.md:396`, `:404` |
+| change (pair) | blue −10 dB, white 0 dB, red +3 dB; HV later minus HV earlier, blue = loss (e.g. a cut) | `src/zafra/rasters.py:65`, `:101`; `docs/METHODS.md:397-399`, `:404` |
+| change (season) | as above; lowest HV minus the first date, stable ground about −1 dB | `src/zafra/rasters.py:106`; `docs/METHODS.md:399-401`, `:404` |
+
+Change layers exist for consecutive dates only, plus the season layer.
+
+### `GET /rasters/{site}/{layer}/{z}/{x}/{y}.png`
+
+```bash
+curl -o t.png http://localhost:8010/rasters/morelos/hv_20251123/12/919/1832.png
+```
+
+The tile file (`image/png`, palette PNG, index 0 transparent = nodata) with
+`Cache-Control: public, max-age=86400`, `ETag` and `Last-Modified`. 204 when the tile does
+not exist (outside the tile set or outside zoom 10-14); 404 for a site without a tile set or
+a layer that is not in the site's index; 400 for non-integer or out-of-range `z`/`x`/`y`.
+Path safety: the layer must be an `id` of the site's index, site and layer must match
+`[a-z0-9_]+`, `z`/`x`/`y` are integers, and the resolved path must stay inside
+`<tiles>/<site>/<layer>` (no symlink out); tested over HTTP (`api/tests/test_api.py`) and on
+the path function (`api/tests/test_rasters.py`).
 
 ## `GET /segments/{site}/{segment_id}`
 

@@ -41,8 +41,9 @@ What exists right now:
 * the **loader** (`docker compose exec api python -m app.loader --site morelos|brazil|all`)
   fills the schema from the library's result files for both sites (see [DATA.md](DATA.md));
 * the **API** serves the loaded data: `/sites`, `/tiles/{site}/{z}/{x}/{y}.pbf` (segment
-  vector tiles), `/segments/{site}/{segment_id}`, `/weekly/{site}`, `/reference/{site}` and
-  `/alerts/{site}`, besides `/health` and `/version` (see [docs/API.md](docs/API.md));
+  vector tiles), `/segments/{site}/{segment_id}`, `/weekly/{site}`, `/reference/{site}`,
+  `/alerts/{site}` and `/rasters/{site}` (the library's NISAR image tiles, read from disk),
+  besides `/health` and `/version` (see [docs/API.md](docs/API.md));
 * the **map** draws the segment vector tiles from the API, with a site select (Morelos /
   Brazil) that refits the map, a weekly time slider with play/pause over the site's harvest
   dates (segments harvested by the slider date coloured by harvest date, the rest standing
@@ -93,7 +94,17 @@ What exists right now:
   burned-and-not-harvested list was tested against chance and removed:
   [docs/FINDINGS.md](docs/FINDINGS.md).
 
-The other event features (raster swipe, deployment) do not exist yet.
+* **radar imagery** (Explorer): the library's NISAR GCOV tile sets (six ascending dates per
+  site; HV, HH, HV − HH cross-ratio and HV change) under the field polygons. "Radar imagery"
+  over the map: off, single date (product, date, "Follow time slider" for the latest
+  acquisition on or before the slider date, opacity, field outlines on top in the harvest
+  colours or hidden) or compare (earlier date left, later date right, a draggable divider;
+  the right side can show the library's HV change layer for the pair where one exists). A
+  legend line gives the library's description of the colours and the acquisition date(s);
+  the imagery credit is the library's NISAR line (docs/DATA_SOURCES.md). Tiles exist for zoom 10-14;
+  the tiles reach the server only with `./deploy.sh --with-rasters` (about 650 MB).
+* **deployment**: first production deployment to zafraradar.earth on 2026-11-14 (see
+  [DEPLOY.md](DEPLOY.md) and [docs/JOURNAL.md](docs/JOURNAL.md)).
 
 **Planned during the event:** API, map, field detail, season dashboard, alerts, raster
 swipe, site switcher, deployment. Build order and estimates:

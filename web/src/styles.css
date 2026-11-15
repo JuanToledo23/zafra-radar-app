@@ -275,3 +275,45 @@ a.ops-export { color: var(--ink); text-decoration: none; border: 1px solid #8c95
   .report { max-width: none; padding: 0; box-shadow: none; }
   .report-section h2 { break-after: avoid; }
 }
+/* Radar imagery: control over the map (top right), compare divider and date labels. */
+/* isolation: the divider and labels stay below the slider and the panel drawn after the map */
+.map-wrap { flex: 1; min-width: 0; min-height: 0; position: relative; display: flex; isolation: isolate; }
+.radar {
+  position: absolute; top: 10px; right: calc(var(--panel-w) + 10px); z-index: 3; width: 290px;
+  max-height: calc(100% - 140px); overflow-y: auto; background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 12px;
+}
+.radar-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+.radar-head .toggle { white-space: nowrap; }
+.radar-title { font-weight: 600; }
+.radar-body { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.radar-body select { font: inherit; font-size: 12px; }
+.radar-body input[type="range"] { vertical-align: middle; width: 140px; }
+.radar-none { margin: 4px 0 0; }
+.radar-legend { margin-top: 6px; }
+.radar-legend-head { font-variant-numeric: tabular-nums; }
+.radar-ramp { height: 8px; border-radius: 2px; border: 1px solid var(--line); margin-top: 3px; }
+.radar-meaning { font-size: 11px; line-height: 1.35; margin: 2px 0 0; }
+.radar-credit { font-size: 10px; color: var(--muted); margin: 6px 0 0; }
+.radar-divider {
+  position: absolute; top: 0; bottom: 0; width: 16px; margin-left: -8px; z-index: 1;
+  cursor: ew-resize; touch-action: none; display: flex; justify-content: center;
+}
+.radar-divider::before { content: ""; width: 2px; height: 100%; background: #fff; box-shadow: 0 0 3px rgba(0, 0, 0, 0.6); }
+/* handle and date labels low on the divider, clear of the control panel (top right) */
+.radar-handle {
+  position: absolute; top: 72%; width: 16px; height: 36px; margin-top: -18px; border-radius: 4px;
+  background: #fff; border: 1px solid #555;
+}
+.radar-side {
+  position: absolute; top: calc(72% - 9px); z-index: 1; pointer-events: none; font-size: 12px; font-weight: 600;
+  font-variant-numeric: tabular-nums; background: rgba(20, 54, 31, 0.85); color: #fff; padding: 2px 8px;
+  border-radius: 4px; white-space: nowrap; margin: 0 12px;
+}
+.radar-zoom-note {
+  position: absolute; top: 50px; left: 50%; transform: translateX(-50%); z-index: 2; font-size: 12px;
+  background: #fff4e0; border-radius: 4px; padding: 3px 8px; pointer-events: none;
+}
+@media (max-width: 700px) {
+  .radar { right: 10px; width: min(290px, calc(100% - 60px)); max-height: 45%; }
+}

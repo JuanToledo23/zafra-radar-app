@@ -120,6 +120,44 @@ ranges: Morelos HV -22.7 to -2.9, HH -17.2 to +9.3; Brazil HV -23.8 to -4.0, HH 
   taken at 00:00 UTC, as in the library; no loaded fire changes side if the window is taken on
   local dates instead (checked for both sites).
 
+## Raster tiles (served, not loaded)
+
+The NISAR image tiles are an input of the API, not of the loader: nothing from them goes into
+the database. `/rasters/{site}` reads `data/tiles/<site>/tiles_index.json` and
+`/rasters/{site}/{layer}/{z}/{x}/{y}.png` serves the PNG files from the read-only mount
+(docs/API.md). They are written by the library's `scripts/18_web_rasters.py`
+(`zafra.rasters`, its docs/METHODS.md "Web raster layers"): six ascending GCOV dates per site
+(`web_rasters` in the site config), 24 layers (HV, HH, HV − HH cross-ratio for each date; HV
+change for each consecutive pair and for the season), zoom 10-14, 256-pixel palette PNGs.
+
+Checked on 2026-11-14 at library commit `0d6b064` (`du -sk`, `find -type f`):
+
+| Site | Directory | Files | Size on disk | Dates |
+|---|---|---|---|---|
+| Morelos | `data/tiles/morelos/` | 6,361 (6,360 PNG + index) | 324 MB (apparent 313 MB) | 2025-11-23, 12-29, 2026-01-22, 02-15, 03-11, 04-28 |
+| Brazil | `data/tiles/brazil/` | 6,289 (6,288 PNG + index) | 323 MB (apparent 313 MB) | 2026-06-24, 07-06, 08-11, 09-04, 09-28, 10-22 |
+| Both | `data/tiles/` | 12,650 | 646 MB | |
+
+`./deploy.sh --with-rasters` copies this directory (rsync, about 650 MB in 12,650 small files);
+without it the server has no tile set and the Explorer's radar control is disabled.
+
+* **Colours** (`meaning` of each layer in `/rasters/{site}`): the stretch and ramp come from
+  the index; the description of what brighter / darker and blue / red mean is the library's
+  text, cited by file and line in docs/API.md.
+* **Attribution**: "NISAR L2 GCOV (Provisional): NASA/JPL-ISRO NISAR Project, distributed by
+  ASF DAAC", from the library's docs/DATA_SOURCES.md:11-15 and :28-30.
+* **Known gap in the library's tile sets:** the overview zooms 10-13 lack the easternmost
+  tile column whose zoom-14 tiles exist (both sites, every layer checked). Where the imagery
+  stops on screen, by tile zoom (MapLibre draws zoom z+1 tiles at map zoom about z):
+
+  | Site | z10, z11 | z12 | z13 | z14 |
+  |---|---|---|---|---|
+  | Morelos | 99.141° W (11.6 km missing) | 99.053° W (2.3 km) | 99.053° W (2.3 km) | complete, to 99.031° W |
+  | Brazil | 47.813° W (6.9 km) | 47.813° W (6.9 km) | 47.769° W (2.3 km) | complete, to 47.747° W |
+
+  Cane segments lie in those strips. The fix belongs in the library (`zafra.rasters`
+  overview tiling); the app serves the files as they are.
+
 ## Reference fields and their dates
 
 Checked on 2026-11-14 in `data/fields/fields_v2.geojson` and the 38 reference-field records

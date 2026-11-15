@@ -125,3 +125,21 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
 - Date error in the report's footnote quoted from the library's docs/VALIDATION.md (:18, :26).
 - Printed with headless Chrome: Morelos 2026-02-15 EN and ES, Brazil 2026-09-30, Letter and A4,
   2 pages each, no horizontal overflow; PDFs not kept.
+
+## 2026-11-14 21:20 CST
+
+- First production deployment to zafraradar.earth, run by the author with `./deploy.sh`.
+- Both production images (api, Caddy with the web build) built on the VM for the first time;
+  all three containers (db, api, caddy) healthy.
+- Loader counts on the server identical to the local ones.
+
+## 2026-11-14 21:45 CST
+
+- Radar imagery in the Explorer: `/rasters/{site}` (the library's tiles_index.json, normalised,
+  with the library's colour description and NISAR credit cited by file and line) and
+  `/rasters/{site}/{layer}/{z}/{x}/{y}.png` (files from the read-only mount, 204 when missing).
+- Web: off / single date (follow the time slider) / compare with a divider drawn by two
+  scissor-clipped raster layers in one map, no plugin. 31 new tests, 93 pass; build passes.
+- Headless Chrome, both sites: harvested fields turn dark between the first and last date
+  and line up with the outlines. The library's overview tiles (z10-13) lack the easternmost
+  column, a 2-12 km blank strip on the east edge (DATA.md); tile sets 646 MB, 12,650 files.

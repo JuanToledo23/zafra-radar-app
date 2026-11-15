@@ -1,5 +1,5 @@
-import maplibregl, { type StyleSpecification } from "maplibre-gl";
-import { useEffect, useRef, useState } from "react";
+import maplibregl, { type CustomLayerInterface, type StyleSpecification } from "maplibre-gl";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import type { Selection, Site } from "./App";
 import {
   BASEMAP_LAYER,
@@ -10,6 +10,7 @@ import {
   type BasemapState,
 } from "./basemap";
 import { ALERT_OUTLINE_COLOR } from "./alerts";
+import { layerDates, type RadarView } from "./radar";
 import type { ReferenceCollection } from "./reference";
 import {
   DATED_OPACITY,
@@ -56,7 +57,42 @@ const REF_LABEL_MINZOOM = 12;
 const REF_HIT_PX = 5; // click tolerance around a reference outline
 // Absolute URL: tiles are fetched from a worker, which cannot resolve a relative path.
 export const tilesUrl = (site: string) => `${window.location.origin}/api/tiles/${site}/{z}/{x}/{y}.pbf`;
+// Radar imagery (GET /rasters): up to two raster sources below the segment layers. In
+// compare mode each is clipped to its side of the divider by a scissor rectangle that a
+// custom layer sets just before it; the last custom layer switches the scissor off again, so
+// every layer above (segments, reference fields) is drawn whole. MapLibre itself uses the
+// scissor only for its debug drawing.
+const RADAR = ["radar-left", "radar-right"] as const;
+const CLIP_LEFT = "radar-clip-left";
+const CLIP_RIGHT = "radar-clip-right";
+const CLIP_OFF = "radar-clip-off";
+const RADAR_LAYERS = [CLIP_LEFT, RADAR[0], CLIP_RIGHT, RADAR[1], CLIP_OFF];
+const rasterUrl = (path: string) => `${window.location.origin}/api${path}`;
 const hovered = (yes: unknown, no: unknown) => ["case", ["boolean", ["feature-state", "hover"], false], yes, no];
+
+/** Custom layer that clips what follows to one side of the divider (`split()`, 0..1 of the
+ * width), or stops clipping ("off"). */
+function clipLayer(id: string, side: "left" | "right" | "off", split: () => number): CustomLayerInterface {
+  return {
+    id,
+    type: "custom",
+    render(gl) {
+      if (side === "off") {
+        gl.disable(gl.SCISSOR_TEST);
+        return;
+      }
+      const w = gl.drawingBufferWidth;
+      const h = gl.drawingBufferHeight;
+      const x = Math.round(split() * w);
+      gl.enable(gl.SCISSOR_TEST);
+      if (side === "left") gl.scissor(0, 0, x, h);
+      else gl.scissor(x, 0, w - x, h);
+    },
+  };
+}
+
+const SEGMENT_FILL_OPACITY = hovered(1, ["case", ["has", "harvest_day"], DATED_OPACITY, UNDATED_OPACITY]);
+const SEGMENT_LINE = { color: hovered("#ffffff", "#1d1d1d"), width: hovered(2, 0.3), opacity: hovered(1, 0.5) };
 
 function addSegmentLayers(map: maplibregl.Map, tiles: string) {
   map.addSource(SOURCE, { type: "vector", tiles: [tiles], maxzoom: 15, promoteId: "segment_id" });
@@ -65,9 +101,7 @@ function addSegmentLayers(map: maplibregl.Map, tiles: string) {
     type: "fill",
     source: SOURCE,
     "source-layer": "segments",
-    paint: {
-      "fill-opacity": hovered(1, ["case", ["has", "harvest_day"], DATED_OPACITY, UNDATED_OPACITY]),
-    } as maplibregl.FillLayerSpecification["paint"],
+    paint: { "fill-opacity": SEGMENT_FILL_OPACITY } as maplibregl.FillLayerSpecification["paint"],
   });
   map.addLayer({
     id: LINE,
@@ -75,9 +109,9 @@ function addSegmentLayers(map: maplibregl.Map, tiles: string) {
     source: SOURCE,
     "source-layer": "segments",
     paint: {
-      "line-color": hovered("#ffffff", "#1d1d1d"),
-      "line-width": hovered(2, 0.3),
-      "line-opacity": hovered(1, 0.5),
+      "line-color": SEGMENT_LINE.color,
+      "line-width": SEGMENT_LINE.width,
+      "line-opacity": SEGMENT_LINE.opacity,
     } as maplibregl.LineLayerSpecification["paint"],
   });
   map.addLayer({
@@ -160,14 +194,25 @@ type Props = {
   selected: Selection;
   onSelect: (s: Selection) => void;
   onBasemap: (s: BasemapState) => void;
+  radar: RadarView | null;
+  radarOpacity: number;
+  radarOutlines: boolean;
+  radarAttribution: string | null;
+  compare: boolean;
 };
 
 export default function MapView({
   site, day, zoomTo, reference, referenceOn, alertCode, selected, onSelect, onBasemap,
+  radar, radarOpacity, radarOutlines, radarAttribution, compare,
 }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [zoom, setZoom] = useState(0);
+  // Divider position, 0..1 of the map width: state for the DOM handle, ref for the GL clip.
+  const [split, setSplit] = useState(0.5);
+  const splitRef = useRef(0.5);
+  const radarOn = !!(radar?.left || radar?.right);
 
   useEffect(() => {
     const map = new maplibregl.Map({
@@ -179,6 +224,7 @@ export default function MapView({
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
+    map.on("zoomend", () => setZoom(map.getZoom()));
 
     const setBasemap = (s: BasemapState) => {
       if (!map.getLayer(BASEMAP_LAYER)) return;
@@ -226,6 +272,7 @@ export default function MapView({
       });
 
       mapRef.current = map;
+      setZoom(map.getZoom());
       setLoaded(true);
       const online = await probeBasemap();
       if (mapRef.current === map) setBasemap(online ? "online" : "offline"); // not if removed meanwhile
@@ -257,16 +304,60 @@ export default function MapView({
     map.once("idle", () => Object.assign(window, { __mapReadySite: site.site_id }));
   }, [loaded, site, onSelect]);
 
-  // Slider day: repaint only; the source is not reloaded.
+  // Slider day: repaint only; the source is not reloaded. With radar imagery on, the fills
+  // are transparent (still clickable) and the outlines carry the harvest colours instead,
+  // or are hidden.
   useEffect(() => {
     const map = mapRef.current;
-    if (!loaded || !map || !site || day === null) return;
-    map.setPaintProperty(
-      FILL,
-      "fill-color",
-      harvestColorExpression(toDay(site.harvest_date_min), toDay(site.harvest_date_max), day),
-    );
-  }, [loaded, site, day]);
+    if (!loaded || !map || !site || day === null || !map.getLayer(FILL)) return;
+    const color = harvestColorExpression(toDay(site.harvest_date_min), toDay(site.harvest_date_max), day);
+    map.setPaintProperty(FILL, "fill-color", color);
+    map.setPaintProperty(FILL, "fill-opacity", radarOn ? 0 : SEGMENT_FILL_OPACITY);
+    map.setPaintProperty(LINE, "line-color", radarOn ? hovered("#ffffff", color) : SEGMENT_LINE.color);
+    map.setPaintProperty(LINE, "line-width", radarOn ? hovered(2.5, 1.2) : SEGMENT_LINE.width);
+    map.setPaintProperty(LINE, "line-opacity", radarOn ? hovered(1, 0.9) : SEGMENT_LINE.opacity);
+    map.setLayoutProperty(LINE, "visibility", radarOn && !radarOutlines ? "none" : "visible");
+  }, [loaded, site, day, radarOn, radarOutlines]);
+
+  // Radar sources: replaced when a layer changes (a new date, product or site); below the
+  // segment layers. Clip layers only in compare mode.
+  const leftId = radar?.left?.id ?? null;
+  const rightId = radar?.right?.id ?? null;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!loaded || !map || !site) return;
+    const remove = () => {
+      RADAR_LAYERS.forEach((id) => map.getLayer(id) && map.removeLayer(id));
+      RADAR.forEach((id) => map.getSource(id) && map.removeSource(id));
+    };
+    remove();
+    const before = map.getLayer(FILL) ? FILL : undefined;
+    const layers = [radar?.left ?? null, compare ? (radar?.right ?? null) : null];
+    layers.forEach((layer, i) => {
+      if (!layer) return;
+      if (compare) map.addLayer(clipLayer(i ? CLIP_RIGHT : CLIP_LEFT, i ? "right" : "left", () => splitRef.current), before);
+      map.addSource(RADAR[i], {
+        type: "raster",
+        tiles: [rasterUrl(layer.tile_url)],
+        tileSize: 256,
+        minzoom: layer.minzoom,
+        maxzoom: layer.maxzoom,
+        bounds: layer.bounds,
+        attribution: radarAttribution ?? undefined,
+      });
+      map.addLayer(
+        { id: RADAR[i], type: "raster", source: RADAR[i], paint: { "raster-opacity": radarOpacity, "raster-fade-duration": 0 } },
+        before,
+      );
+    });
+    if (compare && layers.some(Boolean)) map.addLayer(clipLayer(CLIP_OFF, "off", () => 0), before);
+  }, [loaded, site, leftId, rightId, compare, radarAttribution]); // opacity: its own effect below
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!loaded || !map) return;
+    RADAR.forEach((id) => map.getLayer(id) && map.setPaintProperty(id, "raster-opacity", radarOpacity));
+  }, [loaded, radarOpacity, leftId, rightId]);
 
   // Reference fields of the site: replaced with the collection (empty for Brazil).
   useEffect(() => {
@@ -317,5 +408,47 @@ export default function MapView({
     map.fitBounds([w, s, e, n], { padding: 80, maxZoom: 17 });
   }, [loaded, zoomTo]);
 
-  return <div ref={container} className="map" data-testid="map" />;
+  const moveDivider = (e: PointerEvent<HTMLDivElement>) => {
+    const rect = container.current!.getBoundingClientRect();
+    const f = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 1);
+    splitRef.current = f;
+    setSplit(f);
+    mapRef.current?.triggerRepaint();
+  };
+  const minzoom = radar?.left?.minzoom ?? radar?.right?.minzoom ?? 0;
+
+  return (
+    <div className="map-wrap">
+      <div ref={container} className="map" data-testid="map" />
+      {compare && radarOn && (
+        <>
+          <div
+            className="radar-divider"
+            style={{ left: `${split * 100}%` }}
+            data-testid="radar-divider"
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuenow={Math.round(split * 100)}
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture(e.pointerId);
+              moveDivider(e);
+            }}
+            onPointerMove={(e) => e.currentTarget.hasPointerCapture(e.pointerId) && moveDivider(e)}
+          >
+            <span className="radar-handle" />
+          </div>
+          <div className="radar-side radar-side-left" style={{ right: `${(1 - split) * 100}%` }} data-testid="radar-side-left">
+            {radar?.left ? layerDates(radar.left) : "—"}
+          </div>
+          <div className="radar-side radar-side-right" style={{ left: `${split * 100}%` }} data-testid="radar-side-right">
+            {radar?.right ? (radar.right.product === "change" ? `HV change ${layerDates(radar.right)}` : layerDates(radar.right)) : "—"}
+          </div>
+        </>
+      )}
+      {/* 256-pixel raster tiles are drawn at about one zoom level above the map's */}
+      {radarOn && Math.round(zoom + 1) < minzoom && (
+        <div className="radar-zoom-note">Zoom in to see the radar imagery.</div>
+      )}
+    </div>
+  );
 }

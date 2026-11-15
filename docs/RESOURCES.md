@@ -13,6 +13,10 @@ URL is one those documents do not give.
   Accessed with NASA Earthdata Login through ASF (`asf_search`). Product specification:
   https://cumulus.asf.earthdatacloud.nasa.gov/PUBLIC/DATA/NISAR/NISAR_D-102274_RevF_NASA_SDS_Product_Specification_L2_GCOV_w-esigs.pdf.
   ASF NISAR documentation: https://nisar-docs.asf.alaska.edu/. NASA open data.
+  Shown as image tiles in the Explorer's "Radar imagery" control (the library's display
+  layers, `scripts/18_web_rasters.py`), credited on the map as "NISAR L2 GCOV (Provisional):
+  NASA/JPL-ISRO NISAR Project, distributed by ASF DAAC" (library docs/DATA_SOURCES.md:11-15,
+  :28-30).
 - **NISAR L2 GUNW** (interferometric coherence magnitude only), PROVISIONAL
   (`NISAR_L2_GUNW_PROVISIONAL_V1`). NASA/JPL-ISRO NISAR Project, ASF DAAC. Same access and
   terms as GCOV.

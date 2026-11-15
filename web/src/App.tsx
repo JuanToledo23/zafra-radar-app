@@ -3,11 +3,13 @@ import type { AlertRow } from "./alerts";
 import FindField from "./FindField";
 import MapView from "./MapView";
 import OpsView from "./OpsView";
+import RadarControl from "./RadarControl";
 import SeasonPanel, { type Weekly } from "./SeasonPanel";
 import SidePanel from "./SidePanel";
 import TimeSlider from "./TimeSlider";
 import type { BasemapState } from "./basemap";
 import type { Lang } from "./i18n";
+import { DEFAULT_RADAR, changeLayers, resolveRadar, type RadarSettings, type RasterIndex } from "./radar";
 import type { ReferenceCollection } from "./reference";
 import { cumulativeHarvests, stepIndex, toDay, weekSteps } from "./season";
 
@@ -64,6 +66,8 @@ export default function App() {
   const [zoomTo, setZoomTo] = useState<{ bbox: [number, number, number, number] } | null>(null);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [alertCode, setAlertCode] = useState<string | null>(null);
+  const [rasters, setRasters] = useState<RasterIndex | null>(null);
+  const [radar, setRadar] = useState<RadarSettings>(DEFAULT_RADAR);
 
   useEffect(() => {
     fetch("/api/health")
@@ -100,6 +104,30 @@ export default function App() {
     return () => ctrl.abort();
   }, [siteId]);
 
+  // Radar layers of the site (404 when its tiles are not on the server: control disabled).
+  // New site: its first date for one date, first and last for compare; mode kept.
+  useEffect(() => {
+    const ctrl = new AbortController();
+    setRasters(null);
+    fetch(`/api/rasters/${siteId}`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((idx: RasterIndex | null) => {
+        setRasters(idx);
+        setRadar((s) => ({
+          ...s,
+          mode: idx ? s.mode : "off",
+          date: idx?.dates[0] ?? null,
+          changeId: idx ? (changeLayers(idx)[0]?.id ?? null) : null,
+          left: idx?.dates[0] ?? null,
+          right: idx?.dates.at(-1) ?? null,
+        }));
+      })
+      .catch(() => {
+        if (!ctrl.signal.aborted) setRasters(null);
+      });
+    return () => ctrl.abort();
+  }, [siteId]);
+
   const site = sites.find((s) => s.site_id === siteId) ?? null;
   const steps = useMemo(
     () => (site ? weekSteps(toDay(site.harvest_date_min), toDay(site.harvest_date_max)) : []),
@@ -120,6 +148,7 @@ export default function App() {
   // Slider position: the week containing the shared date (a Sunday), clamped to the season.
   const at = asOf === null ? 0 : stepIndex(steps, asOf);
   const day = steps.length ? steps[at] : null;
+  const radarView = useMemo(() => resolveRadar(rasters, radar, day), [rasters, radar, day]);
 
   useEffect(() => {
     if (!playing) return;
@@ -254,6 +283,11 @@ export default function App() {
               selected={selected}
               onSelect={setSelected}
               onBasemap={setBasemap}
+              radar={radarView}
+              radarOpacity={radar.opacity}
+              radarOutlines={radar.outlines}
+              radarAttribution={rasters?.attribution.text ?? null}
+              compare={radar.mode === "compare"}
             />
             {seasonOpen && site && (
               <SeasonPanel
@@ -267,6 +301,7 @@ export default function App() {
               />
             )}
           </div>
+          <RadarControl index={rasters} settings={radar} view={radarView} onChange={setRadar} />
           <SidePanel
             site={site}
             selected={selected}
