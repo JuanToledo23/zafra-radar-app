@@ -230,6 +230,20 @@ The map of the screen: a vector tile as `/tiles` (layer `segments`, same simplif
 400 and 404 rules) with only `segment_id`, `area_ha` and, for segments harvested on or before
 D, `harvest_date` and `harvest_day`. No status, confidence or alert codes.
 
+### `GET /ops/{site}/series?as_of=`
+
+The two charts of the weekly report, up to D:
+
+| key | meaning |
+|---|---|
+| `as_of` | the date used |
+| `weeks` | one row per Monday–Sunday week from the week holding the earlier of the season start and the first harvest date on or before D, to the week holding D: `{start, end, partial, segments, area_ha}`; `end` is the Sunday, or D for the week holding D (`partial` true when D is not a Sunday); `segments` and `area_ha` count the harvest dates from `start` to `end` |
+| `official` | **absent** without official data; otherwise one row per CONADESUCA weekly report with a cut-off on or before D: `{report, cutoff, official_cum_ha, detected_cum_ha}`, `detected_cum_ha` = dated cane area harvested on or before the cut-off |
+
+Areas, not shares: `/weekly`'s detected share divides by the season's whole dated area, which
+uses harvest dates after D. The `weeks` areas add up to the brief's harvested area, and the last
+`official` row equals the brief's `official`.
+
 ### CSV exports
 
 UTF-8 with a byte-order mark (opens in Excel without mojibake), CRLF line ends,

@@ -759,6 +759,49 @@ async def ops_fires(site: str, as_of: dt.date | None = None) -> dict:
     })
 
 
+OPS_WEEK_SQL = """
+SELECT date_trunc('week', harvest_date)::date AS monday, count(*) AS n,
+       sum(area_ha::float8) AS ha
+FROM segments WHERE site_id = :site AND harvest_date <= CAST(:d AS date)
+GROUP BY 1
+"""
+OPS_SERIES_OFFICIAL_SQL = """
+SELECT o.report, o.cutoff, o.cum_ha,
+       (SELECT coalesce(sum(area_ha::float8), 0) FROM segments
+        WHERE site_id = :site AND harvest_date <= o.cutoff) AS det_ha
+FROM official_weekly o
+WHERE o.site_id = :site AND o.cutoff <= CAST(:d AS date) ORDER BY o.report
+"""
+
+
+@app.get("/ops/{site}/series")
+async def ops_series(site: str, as_of: dt.date | None = None) -> dict:
+    """Chart series of the weekly report up to the date: detected harvest area per Monday-Sunday
+    week (the week holding the date counted only up to it) and, with official data, the
+    cumulative official and detected area at each report cut-off on or before the date. Areas
+    in ha, not shares: a share of the season's dated area would use later harvest dates."""
+    async with engine.connect() as conn:
+        info, d = await ops_context(conn, site, as_of)
+        binned = {r["monday"]: r for r in await fetch(conn, OPS_WEEK_SQL, site=site, d=d)}
+        has_official, _ = await official_row(conn, site, d)
+        official = await fetch(conn, OPS_SERIES_OFFICIAL_SQL, site=site, d=d) if has_official else None
+    first = min([info["season_start"], *binned])
+    monday = first - dt.timedelta(days=first.weekday())
+    weeks = []
+    while monday <= d:
+        end = min(monday + dt.timedelta(days=6), d)
+        r = binned.get(monday, {"n": 0, "ha": 0.0})
+        weeks.append({"start": monday, "end": end, "partial": end < monday + dt.timedelta(days=6),
+                      "segments": r["n"], "area_ha": round(r["ha"], 2)})
+        monday += dt.timedelta(days=7)
+    out = {"site_id": site, "as_of": d, "weeks": weeks}
+    if has_official:
+        out["official"] = [{"report": r["report"], "cutoff": r["cutoff"],
+                            "official_cum_ha": float(r["cum_ha"]),
+                            "detected_cum_ha": round(r["det_ha"], 2)} for r in official]
+    return clean(out)
+
+
 def csv_response(body: bytes, name: str) -> Response:
     return Response(content=body, media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})

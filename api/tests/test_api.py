@@ -377,6 +377,11 @@ def test_ops_no_hindsight_on_any_endpoint(site):
         assert len(later) == brief["not_yet_detected"]["segments"]
         fires = get_json(f"/ops/{site}/fires?as_of={d}")
         assert not dates_after(fires, d)
+        series = get_json(f"/ops/{site}/series?as_of={d}")
+        assert not dates_after(series, d), dates_after(series, d)[:3]
+        assert series["weeks"][-1]["end"] == d
+        assert math.isclose(sum(w["area_ha"] for w in series["weeks"]), brief["harvested"]["area_ha"], abs_tol=0.05)
+        assert not any("pct" in k or "share" in k for w in series.get("official") or [] for k in w)
         for path in (f"/ops/{site}/harvested.csv?as_of={d}&days=14", f"/ops/{site}/not-detected.csv?as_of={d}",
                      f"/ops/{site}/ledger.csv?as_of={d}"):
             _, _, body = get(path)
@@ -402,6 +407,23 @@ def test_ops_no_hindsight_on_any_endpoint(site):
         assert seen > 0
 
 
+def test_ops_series_weeks_and_official_up_to_the_date():
+    as_of = "2026-02-18"  # a Wednesday: its week is counted only up to it
+    s = get_json(f"/ops/morelos/series?as_of={as_of}")
+    weeks = s["weeks"]
+    assert weeks[0]["start"] <= "2025-11-01" and all(not w["partial"] for w in weeks[:-1])
+    assert weeks[-1] == {**weeks[-1], "start": "2026-02-16", "end": as_of, "partial": True}
+    assert all(dt.date.fromisoformat(w["start"]).weekday() == 0 for w in weeks)
+    recent = all_pages(f"/ops/morelos/harvested?as_of={as_of}&days=7")
+    assert 0 < weeks[-1]["segments"] == sum(r["harvest_date"] >= "2026-02-16" for r in recent)
+    brief = get_json(f"/ops/morelos?as_of={as_of}")
+    last = s["official"][-1]
+    assert last["cutoff"] == brief["official"]["cutoff"] <= as_of
+    assert last["official_cum_ha"] == brief["official"]["official_harvested_ha"]
+    assert last["detected_cum_ha"] == brief["official"]["detected_harvested_ha"]
+    assert "official" not in get_json("/ops/brazil/series?as_of=2026-09-30")
+
+
 def test_ops_brazil_has_no_official_or_tonnage():
     d = get_json("/ops/brazil")
     assert "cane_tonnage_estimate" not in d and "official" not in d
@@ -416,6 +438,8 @@ def test_ops_errors():
     assert get("/ops/morelos/harvested?days=10")[0] == 400
     assert get("/ops/morelos/harvested.csv?days=10")[0] == 400
     assert get("/ops/morelos/harvested?limit=0")[0] == 422
+    assert get("/ops/nowhere/series")[0] == 404
+    assert get("/ops/morelos/series?as_of=2026-13-01")[0] == 422
     assert get("/ops/morelos/not-detected?limit=501")[0] == 422
 
 
