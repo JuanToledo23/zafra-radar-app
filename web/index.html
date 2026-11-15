@@ -2,11 +2,30 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Map of the sugarcane harvest from NISAR L-band radar, for Morelos (Mexico) and Ribeirão Preto (Brazil)." />
+    <!-- viewport-fit=cover: the app pads itself with the safe-area insets (styles.css) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Zafra Radar · Sugarcane harvest map from satellite radar</title>
+    <meta name="description" content="Map of the sugarcane harvest in Morelos, Mexico (2025–26) and Ribeirão Preto, Brazil (2026–27), field by field and week by week, dated from NISAR L-band satellite radar. A season replay, not a live feed." />
     <meta name="theme-color" content="#ffffff" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>Zafra Radar</title>
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Link preview (Open Graph, Twitter card). The image: a screenshot of this app's harvest
+         map of Morelos in the week of 2 Mar 2026 (docs/JOURNAL.md). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Zafra Radar" />
+    <meta property="og:url" content="https://zafraradar.earth/" />
+    <meta property="og:title" content="Zafra Radar · Sugarcane harvest map from satellite radar" />
+    <meta property="og:description" content="Which sugarcane fields were cut, and when, dated from NISAR L-band satellite radar: Morelos, Mexico (2025–26) and Ribeirão Preto, Brazil (2026–27). A season replay, not a live feed." />
+    <meta property="og:image" content="https://zafraradar.earth/og-image.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Zafra Radar's harvest map of Morelos, Mexico: thousands of sugarcane fields on a dark map, amber where the radar dated a harvest, green where the cane still stands." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Zafra Radar · Sugarcane harvest map from satellite radar" />
+    <meta name="twitter:description" content="Which sugarcane fields were cut, and when, dated from NISAR L-band satellite radar: Morelos, Mexico (2025–26) and Ribeirão Preto, Brazil (2026–27)." />
+    <meta name="twitter:image" content="https://zafraradar.earth/og-image.jpg" />
+    <meta name="twitter:image:alt" content="Zafra Radar's harvest map of Morelos, Mexico: sugarcane fields in amber where the radar dated a harvest, green where the cane still stands." />
   </head>
   <body>
     <div id="root"></div>

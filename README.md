@@ -241,6 +241,12 @@ At 1440×900 (headless Chrome, `docs/screenshots/`):
 | ![Radar compare](docs/screenshots/radar_compare.png) Before / after with its More options | ![Mill operations](docs/screenshots/mill_operations_es.png) Mill operations, Spanish |
 | ![Weekly report](docs/screenshots/weekly_report.png) Weekly report | |
 
+On a phone (390×844, headless Chrome with touch emulation):
+
+| | | | |
+|---|---|---|---|
+| ![Harvest map on a phone](docs/screenshots/phone_harvest_map.png) Harvest map | ![Field sheet on a phone](docs/screenshots/phone_field_sheet.png) A field in the bottom sheet | ![Before / after on a phone](docs/screenshots/phone_before_after.png) Before / after | ![Mill operations on a phone](docs/screenshots/phone_mill_operations.png) Mill operations |
+
 ## License
 
 Code: MIT ([LICENSE](LICENSE)).

@@ -2,7 +2,7 @@
 
 One page of rules for the web app (`web/src/styles.css` holds the tokens as CSS variables).
 The goal: a formal, quiet interface that someone with no remote-sensing background can read at
-a glance, on a laptop, online and on a projector at 1280×720.
+a glance, on a laptop, online and on a projector at 1280×720, and on a phone.
 
 **One idea per view, readable in three seconds.** Each screen shows one thing and a legend of
 at most three plain entries. Everything else sits behind a "More options" (map) or "More
@@ -42,6 +42,17 @@ text), **14 (body, the minimum for running text)**, 16 (section titles), 20 (key
 **Spacing.** 4-point scale: 4, 8, 12, 16, 24, 32. **Radius:** 6 (controls), 10 (cards and
 panels), 999 (pills). **Elevation:** `--shadow-1` (cards), `--shadow-2` (panels floating over
 the map), `--shadow-3` (tooltips, the guide).
+
+## Logo
+
+A sugarcane stalk (three segments with the nodes between them, one leaf) and two radar arcs
+centred on it, white on the accent tile (`#1d4ed8`, radius 14/64), so the interface palette is
+unchanged. Two drawings in `icons.tsx` (`BrandMark`): the full one (64 grid) from 28 px, and a
+small one fitted to the 16-pixel grid (stalk 3 px wide, 1 px nodes, arcs 1.5 px) below 28 px,
+which stays legible as a stalk with nodes and two arcs at 16 px. Used in the top bar (28),
+`favicon.svg` (the small drawing), `apple-touch-icon.png` (180, the full drawing on a full-bleed
+tile, iOS rounds the corners) and the weekly report header (36, printed in colour). No agency
+logos or insignia.
 
 ## Map canvas
 
@@ -151,8 +162,53 @@ Motion carries the message and nothing else; every piece is off with `prefers-re
   links. Captions carry no figures; the numbers on screen come from the API.
 * **Mill operations:** toolbar (site, replay date stepper, exports, weekly report), a key
   numbers row, then list and map side by side.
-* At 1280×720 nothing essential on the Explorer is below the fold. Under 700 px wide the
-  panels stack (map, timeline, then detail).
+* At 1280×720 nothing essential on the Explorer is below the fold. Phones and tablets: below.
+
+## Phones and tablets
+
+Breakpoints (`ui.tsx` `COMPACT` and `SHEET`, repeated in `styles.css`), checked at 360×740,
+390×844, 412×915, a phone in landscape (844×390, 740×360) and 768×1024:
+
+* **Compact** (`max-width: 899px` or `max-height: 520px`): the app fills the dynamic viewport
+  (`100dvh`, so the browser's bars never hide the timeline) and pads itself with the safe-area
+  insets (`viewport-fit=cover`); there is no page scroll, panels scroll inside. Every control is
+  at least 44 px (the "?" and the switches through a 44 px hit area around them), form fields
+  are 16 px (iOS does not zoom on focus), running text at least 14 px.
+* **Top bar:** logo, site select, the Explorer / Mill operations switch and a menu button (Find
+  field, EN / ES, Take the tour). Under 680 px the product name is for screen readers only and
+  the switch reads Map / Mill (Mapa / Ingenio).
+* **Explorer, sheet** (compact and at least 521 px high: phones in portrait, tablets): the map
+  takes the screen; the map panel spans its top: the three views as one segmented control, then
+  the legend in one line (short words: Harvested, Standing cane, No date; Bright ▬ Dark and the
+  image date) with a More options button beside it, which opens the full legend (with its "?")
+  and the options; at most 65 % of the map's height. Zoom buttons at mid-height on the right.
+  The detail panel is a bottom sheet (full width on a phone, 640 px centred on a tablet): a
+  56 px summary bar ("Season so far · 34 % of the cane harvested", "Field cc12065", "Alerts")
+  that opens it on tap, to at most 62 % of the screen, so the map above it still pans and takes
+  taps. A tapped field opens the sheet on its headline sentence; the bar's close button clears
+  the field and closes the sheet. Camera fits start below the map panel.
+* **Explorer, short** (a phone in landscape): a 300 px side panel beside the map, as on a
+  laptop, with the map panel (views, full legend, More options) at its top, so the map keeps
+  its whole height.
+* **Timeline:** the date and the count on one line ("4 May 2026 · 3,976 fields · 69 % of
+  cane"), then a 48 px play button, the slider with the weekly bars (a 28 px thumb on a 44 px
+  track) and the season button as an icon.
+* **Before / after:** on a touch screen (`pointer: coarse`) or a compact window the divider takes
+  input on its 48 px handle only; a finger beside it pans the map.
+* **Season panel:** over the map, the charts stacked at full width.
+* **Guided tour:** the card sits under the page, in its flow (not over the map), so it never
+  covers the control its caption talks about; Back and Next 48 px. In landscape it sits over
+  the lower part of the side panel (the map, the timeline and the season charts stay clear;
+  a field scene's panel scrolls to its headline) without the step dots ("Step n of 9", Back
+  and Next remain); on Mill operations, which has no side panel, it is under the page.
+* **Mill operations:** one scrolling column; key numbers in a grid of 150 px columns; filters
+  wrap; the tables scroll sideways inside their box with the field column fixed; rows 44 px or
+  more; exports full width.
+* **Weekly report:** below 900 px on screen, one column at 14 px without the paper frame,
+  numbers in two columns, charts stacked, tables scrolling sideways; print keeps two pages
+  (the header shows the mark beside the title, the "Zafra Radar" line above it only on screen).
+* **Hover:** nothing depends on it. The "?" opens on tap (a tap elsewhere closes it); a tap on
+  a chart shows its values.
 
 ## Components
 
@@ -193,6 +249,6 @@ Motion carries the message and nothing else; every piece is off with `prefers-re
 * Every icon-only button has an `aria-label`; groups have `role="group"` and a label.
 * `prefers-reduced-motion`: no transitions or shimmer, map moves without animation, no
   first-visit autoplay, weekly highlight, number easing or divider hint.
-* Interface motion is short (150 ms) and only on opacity, colour and small transforms; the
-  map's motion follows the rules under Motion above.
-* No NASA or agency logos or insignia anywhere; the favicon is a neutral radar mark.
+* Interface motion is short (150 ms, the bottom sheet 200 ms) and only on opacity, colour,
+  height and small transforms; the map's motion follows the rules under Motion above.
+* No NASA or agency logos or insignia anywhere; the logo is the app's own (see Logo).

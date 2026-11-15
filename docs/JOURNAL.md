@@ -212,3 +212,16 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
 - Headless Chrome at 1280×720 and 1440×900, both sites and languages: tour forward and back
   restores every scene; each scene drawn in 0.05-2.6 s (presenter scene 1: 3.6 s from page
   load); weekly report 2 pages (Letter, A4); build passes; api suite 110 passed.
+
+## 2026-11-15 09:24 CST
+
+- New logo: a sugarcane stalk (nodes, one leaf) with two radar arcs on the blue tile, with a
+  16-pixel-grid version for the favicon; top bar, favicon, apple-touch-icon, weekly report.
+- Phones and tablets (`max-width: 899px` or `max-height: 520px`): top bar with a menu, the
+  detail panel as a bottom sheet, one-line legend, a thumb-sized timeline, divider dragged by
+  its handle only, tour card under the page, 44 px targets, 16 px fields, `100dvh`, safe areas.
+- Headless Chrome with touch emulation at 360×740, 390×844, 412×915, 768×1024, 844×390 and
+  740×360, EN and ES: no sideways scroll; 1280×720 and 1440×900 differ from main only in the
+  logo and the chart hints ("hover or tap"); weekly report still 2 pages (A4, Letter).
+- Link preview: title, description, Open Graph and Twitter tags; `og-image.jpg` is a
+  screenshot of the Morelos harvest map in the week of 2 Mar 2026 (offline backdrop).
