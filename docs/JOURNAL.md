@@ -182,3 +182,18 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
 - EN / ES switch for the whole interface; dates day first (21 Dec 2025 / 21 dic 2025).
 - Headless Chrome at 1280×720 and 1440×900, both sites and languages, offline and the weekly
   report (2 pages, Letter and A4): 487 checks pass; build passes; api suite 110 passed.
+
+## 2026-11-15 01:25 CST
+
+- Explorer first impression, appearance and motion only (no API, calculation or feature
+  change): dark desaturated basemap under light panels; no-date fields a faint fill and thin
+  outline; standing / harvested colours kept (simulated CVD CIEDE2000 ≥ 29.9 on the dark map).
+- First visit plays the season once (stops at the end or on any input; not on return
+  visits, with reduced motion or `?present=1`); the week's harvests light up and fade into amber.
+- Timeline draws weekly harvests along the slider and the share of mapped cane; "Season so
+  far" block in the side panel; camera fits the cane extent; divider labels placed clear of
+  the panel, zoom buttons and credit, with a drag handle and one hint sway.
+- Headless Chrome, 1280×720 and 1440×900, both sites and languages: 487 regression and 475
+  new checks pass; weekly report 2 pages (Letter, A4); build passes; api suite 110 passed.
+- Play frames: the weekly highlight is spread across the whole supply area each week (weekly
+  centroid moves 0.5-4 km against an 8-12 km spread), so it reads as a fill-in, not a wave.

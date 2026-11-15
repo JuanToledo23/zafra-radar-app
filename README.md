@@ -48,17 +48,23 @@ What exists right now:
   Brazil) that refits the map, a weekly time slider with play/pause over the site's harvest
   dates ("Week of" its Monday) and the fields harvested so far (`/weekly`) with their hectares
   (`/ops/{site}/series`), and three views, one click each: **Harvest map** (harvested amber,
-  standing green, no harvest date grey, over a dimmed basemap; colour by harvest date under More
-  options), **Radar image** (the NISAR HV image following the timeline) and **Before / after**
-  (first against last acquisition with a divider); a legend of at most three entries;
+  standing green, no harvest date subdued, over a dark basemap; while the timeline advances the
+  week's harvests light up and fade into amber; colour by harvest date under More options),
+  **Radar image** (the NISAR HV image following the timeline) and **Before / after** (first
+  against last acquisition with a draggable divider, labelled on each side); a legend of at
+  most three entries. The map opens on the extent of the site's cane fields; on a first visit
+  the season plays once by itself (not with reduced motion, not with `?present=1`); the
+  slider draws the season's weekly harvests along its track, and the timeline gives the share
+  of the mapped cane harvested;
 * the **field detail panel**: clicking a segment loads `/segments/{site}/{segment_id}` into
   the side panel: area, status and "Zoom to field"; one sentence, "Harvested around <date>
   (± n days)" or "No harvest date detected"; the HV radar signal of both orbits with the
   harvest date band; the field summary with an EN / ES toggle and its source. "More detail"
   holds the date confidence, the optical and radar cane probabilities, HV drop and minimum
   coherence, HV, HH and coherence charts on one date axis with nearby fires, the fire list
-  within 200 m and the field's alerts; with nothing selected the panel shows the site's three
-  key numbers;
+  within 200 m and the field's alerts; with nothing selected the panel shows "Season so far"
+  (share of the mapped cane area harvested, fields and hectares so far, this week's harvest),
+  following the timeline, and the site's three key numbers;
 * the **season progress panel** ("Season progress" on the timeline bar under the map) opens as a
   drawer across the bottom of the map, from `/sites` and `/weekly/{site}`: cane and dated area and segment counts (and,
   for Morelos, the official mill area and detected area as a share of it); weekly detected
