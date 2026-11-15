@@ -55,8 +55,8 @@ What exists right now:
   the field summary with an EN / ES toggle and its source; HV, HH (both orbits) and
   coherence charts on one date axis with the harvest date band and nearby fires; the fire
   list within 200 m and the field's alerts;
-* the **season progress panel** ("Season progress" in the header) opens across the bottom of
-  the map, from `/sites` and `/weekly/{site}`: cane and dated area and segment counts (and,
+* the **season progress panel** ("Season progress" on the timeline bar under the map) opens as a
+  drawer across the bottom of the map, from `/sites` and `/weekly/{site}`: cane and dated area and segment counts (and,
   for Morelos, the official mill area and detected area as a share of it); weekly detected
   harvests and VIIRS fires within 200 m of cane on one axis with their Pearson r computed in
   the browser (replaced by a note when the season has fewer than 30 fires in cane); for Morelos, detected vs official cumulative share with the 25/50/75 % levels
@@ -65,17 +65,17 @@ What exists right now:
 * **reference fields**: the loader also fills `reference_fields`, `reference_dates` and
   `reference_summaries` (Morelos' 38 traced fields, with their NDVI harvest windows, p36's
   reported ground-truth dates and summaries), served by `/reference/{site}`. "Reference
-  fields" in the header draws the outlines (white dashes, id labels from zoom 12); clicking
+  fields" in the Map layers panel draws the outlines (white dashes, id labels from zoom 12); clicking
   one opens a card with its reference dates, the radar date ± uncertainty of the field and
   of each overlapping segment, the difference in days, the summary (EN / ES) and links to
   the segments' detail. "Find field" flies to a reference field (p36) or a segment (cc20456).
 * **alerts**: `tools/build_alerts.py` runs the library's own alert rules over every cane
   segment of both sites into `data/derived/` (DATA.md); the loader loads them, and
   `/alerts/{site}` serves per-code counts with the library's definitions and pages of alerts.
-  "Alerts" in the header lists them in the side panel: a fixed note that they are flags for
+  "Alerts" in the Map layers panel lists them in the side panel: a fixed note that they are flags for
   review, code chips that filter the list and outline the matching segments on the map, 50
   rows at a time; clicking a row flies to the segment and opens its detail.
-* **mill operations**: a header switch between "Explorer" and "Mill operations". The latter
+* **mill operations**: a top-bar switch between "Explorer" and "Mill operations". The latter
   replays the season as of a date for a mill's field department (`/ops/{site}`, app logic
   defined in docs/API.md), using only what was known on that date (radar harvest dates and
   fire detections on or before it; an HTTP test checks every endpoint of the screen): a
@@ -96,13 +96,22 @@ What exists right now:
 
 * **radar imagery** (Explorer): the library's NISAR GCOV tile sets (six ascending dates per
   site; HV, HH, HV − HH cross-ratio and HV change) under the field polygons. "Radar imagery"
-  over the map: off, single date (product, date, "Follow time slider" for the latest
+  in the Map layers panel: off, single date (product, date, "Follow time slider" for the latest
   acquisition on or before the slider date, opacity, field outlines on top in the harvest
   colours or hidden) or compare (earlier date left, later date right, a draggable divider;
   the right side can show the library's HV change layer for the pair where one exists). A
   legend line gives the library's description of the colours and the acquisition date(s);
   the imagery credit is the library's NISAR line (docs/DATA_SOURCES.md). Tiles exist for zoom 10-14;
   the tiles reach the server only with `./deploy.sh --with-rasters` (about 650 MB).
+* **interface**: one design system ([docs/DESIGN.md](docs/DESIGN.md)): a top bar (site, the
+  Explorer / Mill operations switch, Find field, language on Mill operations, connection
+  status), a Map layers panel (harvest legend, radar imagery, reference fields, alerts), a
+  timeline bar under the map with play and the current date, the season panel as a bottom
+  drawer, the detail panel on the right; "?" tooltips with one plain sentence per chart,
+  number and layer (technical term in parentheses); a three-step "Start here" guide on the
+  first visit (remembered in the browser); loading, empty and error states; keyboard
+  operation, visible focus and reduced motion; at phone width the page scrolls (map,
+  timeline, drawer, detail). Data colours and their meaning are unchanged.
 * **deployment**: first production deployment to zafraradar.earth on 2026-11-14 (see
   [DEPLOY.md](DEPLOY.md) and [docs/JOURNAL.md](docs/JOURNAL.md)).
 
@@ -150,7 +159,7 @@ starts and the map renders with no network:
 
 * the basemap (Esri World Imagery) is shown only if a probe tile loads; otherwise, or if
   tiles start failing, the map falls back to a plain background with the segment polygons
-  ("basemap: offline (plain)" in the header). The style uses no fonts or sprites;
+  ("basemap: offline (plain)" in the top bar; not shown at phone width). The style uses no fonts or sprites;
 * to check that no container needs egress at runtime:
 
   ```bash
@@ -186,11 +195,20 @@ from the developer's machine with `./deploy.sh`. Setup, deploy, checks and rollb
 * [DATA.md](DATA.md): the input files read from the research library (`ZAFRA_DATA`).
 * [DEPLOY.md](DEPLOY.md): production deployment.
 * [docs/API.md](docs/API.md): the API endpoints and their response keys.
+* [docs/DESIGN.md](docs/DESIGN.md): the interface's design tokens, layout and component rules.
 * [docs/RESOURCES.md](docs/RESOURCES.md): data, resources and software used.
 * [AI_USAGE.md](AI_USAGE.md): how AI was used, in development and in the product.
 * [docs/JOURNAL.md](docs/JOURNAL.md): build log of the event.
 
-![skeleton](docs/skeleton.png)
+## Screenshots
+
+At 1440×900 (headless Chrome, `docs/screenshots/`):
+
+| | |
+|---|---|
+| ![Explorer](docs/screenshots/explorer.png) Explorer: map layers, timeline, detail panel | ![Field detail](docs/screenshots/field_detail.png) Field detail |
+| ![Season panel](docs/screenshots/season_panel.png) Season progress drawer | ![Radar compare](docs/screenshots/radar_compare.png) Radar imagery, compare |
+| ![Mill operations](docs/screenshots/mill_operations_es.png) Mill operations, Spanish | ![Weekly report](docs/screenshots/weekly_report.png) Weekly report |
 
 ## License
 

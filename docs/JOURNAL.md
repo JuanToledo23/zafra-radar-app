@@ -160,3 +160,14 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
   have loaded, then replaces it. Morelos, HV, "Follow time slider", whole season played,
   every render frame read back: 0 blank frames in 3 runs (the previous code: 40 of 278).
 
+
+## 2026-11-14 23:32 CST
+
+- Interface redesign, appearance, layout and wording only (no API, calculation or data-colour
+  change): design tokens and rules in docs/DESIGN.md; top bar; one Map layers panel; timeline
+  bar docked under the map; season panel as a bottom drawer; "?" tooltips; "Start here" guide.
+- Audit at 1280×720 before: season charts squashed to ~20 px, slider over the attribution,
+  running text at 10-12 px, three toggle styles, interface green equal to "standing cane".
+- Headless Chrome at 1440×900, 1280×720 and 390×844, both sites, EN / ES: 383 checks pass, no
+  console errors; weekly report 2 pages on Letter and A4 (both sites, both languages).
+- Type-check and build pass in the web container; api suite 110 passed.
