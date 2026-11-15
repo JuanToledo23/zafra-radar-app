@@ -66,6 +66,16 @@ export const DEFAULT_RADAR: RadarSettings = {
 export type MapViewKind = "harvest" | "radar" | "compare";
 export const viewOf = (s: RadarSettings): MapViewKind => (s.mode === "off" ? "harvest" : s.mode === "single" ? "radar" : "compare");
 
+// Opening view of "Radar image" and "Before / after" per site: a 2.8 × 2 km window (about
+// 0.028° × 0.018°) where the most cane area was dated between the first and the last
+// acquisition with an ascending HV drop of 3 dB or more between those two images (centroids
+// in the window, searched on a 0.002° grid), so single fields and their darkening show.
+// Morelos: 147 such fields of 210 (286 ha); Brazil: 97 of 140 (373 ha).
+export const RADAR_AREAS: Record<string, [number, number, number, number]> = {
+  morelos: [-99.175, 18.663, -99.147, 18.681],
+  brazil: [-47.883, -20.897, -47.855, -20.879],
+};
+
 /** The settings a click on a view sets; More options can change them afterwards. */
 export function viewPreset(view: MapViewKind, index: RasterIndex | null, s: RadarSettings): RadarSettings {
   if (view === "harvest" || !index) return { ...s, mode: "off" };

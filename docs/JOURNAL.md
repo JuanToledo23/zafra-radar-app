@@ -197,3 +197,18 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
   new checks pass; weekly report 2 pages (Letter, A4); build passes; api suite 110 passed.
 - Play frames: the weekly highlight is spread across the whole supply area each week (weekly
   centroid moves 0.5-4 km against an 8-12 km spread), so it reads as a fill-in, not a wave.
+
+## 2026-11-15 02:10 CST
+
+- Radar views open close over a data-chosen cane area (Morelos 147, Brazil 97 fields dated
+  between the first and last image with an ascending HV drop ≥ 3 dB, in 2.8 × 2 km), stay
+  within the image when zoomed out, show faint field edges from zoom 13-14, and use a
+  bright-to-dark legend bar; the divider labels lost their arrows (not buttons).
+- Guided tour of nine scenes (`web/src/tour.ts`): "Take the tour" with captions, or
+  `?present=1` with captions hidden, data preloaded, keyboard and remote keys.
+- Example field cc12065 (19 Jan 2026 ± 2.5 d, 7.9 ha, in the Morelos area, HV down about
+  5 dB ascending and 4.5 dB descending from a steady level), chosen over cc13639, cc13042,
+  cc13144 and cc11964 for its size and steadier signal before the cut.
+- Headless Chrome at 1280×720 and 1440×900, both sites and languages: tour forward and back
+  restores every scene; each scene drawn in 0.05-2.6 s (presenter scene 1: 3.6 s from page
+  load); weekly report 2 pages (Letter, A4); build passes; api suite 110 passed.

@@ -70,6 +70,17 @@ the backdrop on the lightest image tones; the fields' dark hairline edge separat
 loaded tiles) with 24 px padding, 56 px on the right for the zoom buttons, so the fields fill
 the map at 1280×720 and 1440×900; the map panel overlaps only the empty top-left corner.
 
+**Radar views.** At the whole site the radar image is grey texture to a non-specialist, so
+"Radar image" and "Before / after" open close (about zoom 14) over the site's radar area
+(`RADAR_AREAS`, `radar.ts`): a 2.8 × 2 km window chosen from the data, where the most cane
+was dated between the first and last acquisition with an ascending HV drop of 3 dB or more
+(Morelos 147 fields, Brazil 97), so single fields and their darkening show. It sits right of
+most of the map panel (220 px left padding). Zoomed out, the camera stays within the image
+footprint (max bounds), so the image fills the map with no empty bands. Field edges over the
+image: `#e8e8e8`, 0.6 px, opacity 0.35, faded in from zoom 13 to 14, where fields of 1-3 ha
+are wide enough for the edges not to cover them; never filled. "Field outlines on top"
+(More options) still draws them in the harvest colours.
+
 ## Motion
 
 Motion carries the message and nothing else; every piece is off with `prefers-reduced-motion`.
@@ -87,13 +98,14 @@ Motion carries the message and nothing else; every piece is off with `prefers-re
   tabular figures, so the digits do not shift).
 * **Divider hint:** entering Before / after, the divider starts in the middle and sways once
   (±6 % of the width, 1.1 s, after 0.5 s); a drag stops it.
-* **Camera:** after the first paint of a site, a 500 ms ease to the cane extent.
+* **Camera:** after the first paint of a site, a 500 ms ease to the cane extent; entering a
+  radar view from the harvest map, a 500 ms ease to the radar area. Tour scenes jump.
 
 ## Layout
 
 * **Top bar** (56 px, white): product name, site select, the Explorer / Mill operations
   segmented control, then on the right Find field (Explorer), the EN / ES language switch (the
-  whole interface) and the "Start here" button. The basemap and API status labels stay in the
+  whole interface) and the "Take the tour" button. The basemap and API status labels stay in the
   page for the headless checks but are not shown.
 * **Explorer:** map in the middle; the **map panel** floating top-left; **detail panel** on the
   right (400 px); the **timeline bar** docked under the map (play, "Week of" the Monday, the
@@ -105,17 +117,20 @@ Motion carries the message and nothing else; every piece is off with `prefers-re
   1. **Harvest map** (default): standing green, harvested amber, no harvest date grey, over the
      dimmed basemap; play turns the fields amber week by week.
   2. **Radar image**: the NISAR HV image of the latest acquisition on or before the timeline
-     date, following play; no outlines; legend "Bright: standing cane", "Dark: cut cane or bare
-     soil" (from the library's legend text) and the image date.
+     date, following play; faint field edges (see Radar views); legend: a bright-to-dark bar
+     with "Bright: tall vegetation, such as standing cane and trees" under its bright end and
+     "Dark: cut cane, bare soil or water" under its dark end (consistent with the library's
+     legend text), and the image date.
   3. **Before / after**: the first against the last acquisition with the divider, labelled
-     "Before harvest · date" and "After harvest · date"; no outlines, no other controls. The
-     divider has a round drag handle (40 px) in the middle of its height on a 32 px hit strip.
-     The labels sit near the top, each beside the divider on its own side with an arrow
-     pointing to that side, both on one row when they can, moved down below the map panel,
-     the zoom buttons or the credit when they would cover them. On a narrow side a label wraps
-     to two lines (text, date); when even that does not fit (divider within about 15 % of an
-     edge, or More options open over the left side) it is pinned inside the map edge and may
-     cross the divider, never hidden or overlapping the other label.
+     "Before harvest · date" and "After harvest · date"; faint field edges, the same legend, no
+     other controls. The divider has a round drag handle (40 px) in the middle of its height
+     on a 32 px hit strip. The labels are plain text (no arrows: they are not buttons) and sit
+     near the top, each beside the divider on its own side, both on one row when they can,
+     moved down below the map panel, the zoom buttons or the credit when they would cover
+     them. On a narrow side a label wraps to two lines (text, date); when even that does not
+     fit (divider within about 15 % of an edge, or More options open over the left side) it is
+     pinned inside the map edge and may cross the divider, never hidden or overlapping the
+     other label; it then names its side ("Left: Before harvest · date").
 * **More options** (closed by default) holds everything else: colour by harvest date, the
   radar product, dates, follow time slider, change layer, opacity, outlines, the library's full
   legend and credit, reference fields and alerts.
@@ -129,6 +144,11 @@ Motion carries the message and nothing else; every piece is off with `prefers-re
   "No harvest date detected"), then one chart, the HV radar signal titled "The radar signal
   drops when the cane is cut", and the summary. Date confidence, probabilities, HV drop,
   coherence, HH, fires and alerts are under "More detail", with their notes.
+* **Guided tour** (`tour.ts`, `TourCard.tsx`): a card bottom-left over the map (over the side
+  panel's lower part when the season panel covers the map; bottom-right on Mill operations)
+  with "Step n of 9", the scene's title and one-sentence caption, one dot per scene, Back and
+  Next. Presenter mode shows only "n / 9" in the bottom-right corner, and the closing scene's
+  links. Captions carry no figures; the numbers on screen come from the API.
 * **Mill operations:** toolbar (site, replay date stepper, exports, weekly report), a key
   numbers row, then list and map side by side.
 * At 1280×720 nothing essential on the Explorer is below the fold. Under 700 px wide the
@@ -147,7 +167,9 @@ Motion carries the message and nothing else; every piece is off with `prefers-re
   hover, selected row with an accent bar.
 * **Tooltips:** a "?" button next to a title; one plain sentence on hover, focus or tap;
   Escape closes. The technical term stays in parentheses: "Radar signal (HV backscatter)".
-* **Legends:** a swatch or line sample beside each label, inside the layer they describe.
+* **Legends:** a swatch or line sample beside each label, inside the layer they describe; a
+  continuous image (radar HV) gets a small bar from one end of its ramp to the other with the
+  meaning of each end under it, never square swatches (they read as checkboxes).
 * **States:** loading skeletons (shimmer off with reduced motion) with a screen-reader text;
   empty states with an icon and one sentence; errors in a red note with the message.
 * **Notes and caveats** keep their wording; they sit in an amber note, and move with their
@@ -165,7 +187,9 @@ Motion carries the message and nothing else; every piece is off with `prefers-re
 * Visible focus ring on every control: 2 px accent outline, 2 px offset (`:focus-visible`).
 * Keyboard: the timeline slider is a native range (arrows, Home / End) with the date as
   `aria-valuetext`; Play is a button; list rows take Enter; the guide and tooltips close with
-  Escape.
+  Escape. In the tour: right arrow, Space and PageDown go to the next scene, left arrow and
+  PageUp back, Escape leaves; arrows and Space keep their meaning in form controls (the
+  slider), Space on a button.
 * Every icon-only button has an `aria-label`; groups have `role="group"` and a label.
 * `prefers-reduced-motion`: no transitions or shimmer, map moves without animation, no
   first-visit autoplay, weekly highlight, number easing or divider hint.

@@ -5,6 +5,7 @@ import { COHERENCE_COLOR, FIRE_COLOR, HARVEST_COLOR, ORBIT_COLORS, REFERENCE_COL
 import { alertLabel, severityLabel } from "./alerts";
 import { formatDate, formatNumber, t, tValue, useLang, type Lang } from "./i18n";
 import { Icon } from "./icons";
+import { cachedFetch } from "./prefetch";
 import { toDay } from "./season";
 import TimeSeriesChart, { SeriesSwatch, type ChartSeries } from "./TimeSeriesChart";
 import { Disclosure, EmptyState, Segmented, Skeleton, TitleTip } from "./ui";
@@ -69,7 +70,7 @@ function useSegment(siteId: string, segmentId: string): Load {
   useEffect(() => {
     const ctrl = new AbortController();
     setLoad({ state: "loading" });
-    fetch(`/api/segments/${siteId}/${encodeURIComponent(segmentId)}`, { signal: ctrl.signal })
+    cachedFetch(`/api/segments/${siteId}/${encodeURIComponent(segmentId)}`, { signal: ctrl.signal })
       .then(async (r) => {
         if (r.status === 404) return setLoad({ state: "not-found" });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);

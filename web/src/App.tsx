@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AlertRow } from "./alerts";
 import FindField from "./FindField";
 import Guide, { guideDismissed } from "./Guide";
 import { Icon } from "./icons";
 import LayersPanel from "./LayersPanel";
-import MapView from "./MapView";
+import MapView, { type CameraRequest } from "./MapView";
 import OpsView from "./OpsView";
 import SeasonPanel, { type Weekly } from "./SeasonPanel";
 import SidePanel, { type SeasonSoFar } from "./SidePanel";
 import TimeSlider from "./TimeSlider";
+import TourCard from "./TourCard";
 import type { BasemapState } from "./basemap";
 import { LANGS, LangContext, t, tValue, type Key, type Lang } from "./i18n";
 import type { OpsSeries } from "./ops";
@@ -23,8 +24,10 @@ import {
   type RadarSettings,
   type RasterIndex,
 } from "./radar";
+import { cachedFetch } from "./prefetch";
 import type { ReferenceCollection } from "./reference";
 import { cumulativeHarvests, stepIndex, toDay, weekHarvests, weekSteps } from "./season";
+import { SCENES, preloadTour, type Scene } from "./tour";
 import { Segmented, reducedMotion } from "./ui";
 
 // Subset of GET /sites used by the map and the season panel (docs/API.md).
@@ -57,9 +60,12 @@ const DEFAULT_SITE = "morelos";
 const PLAY_STEP_MS = 600;
 const ALERT_ZOOM_DEG = 0.002; // half-size of the box flown to around an alert's segment centroid
 
-// Presenter mode (`?present=1`): the single flag for it. For now it only keeps the first
-// visit's autoplay off.
-export const PRESENTER = new URLSearchParams(window.location.search).get("present") === "1";
+// Presenter mode (`?present=1`): the single flag for it. The tour starts on its first scene
+// with captions hidden, later scenes' data is fetched ahead, and the first visit's autoplay
+// and guide stay off. `?lang=es` or `?lang=en` sets the interface language.
+const QUERY = new URLSearchParams(window.location.search);
+export const PRESENTER = QUERY.get("present") === "1";
+const URL_LANG = LANGS.find((l) => l === QUERY.get("lang")) ?? null;
 
 // First visit: the season plays once from the beginning when the map is ready, and stops at
 // the end or on any interaction. Remembered in localStorage (which may be unavailable: then
@@ -96,7 +102,7 @@ export default function App() {
   const [seasonOpen, setSeasonOpen] = useState(false);
   const [seasonExpanded, setSeasonExpanded] = useState(false);
   const [view, setView] = useState<View>("explorer");
-  const [lang, setLang] = useState<Lang>("en");
+  const [lang, setLang] = useState<Lang>(URL_LANG ?? "en");
   // Harvested area per Monday week (GET /ops/{site}/series as of the last harvest date), for
   // the hectares beside the timeline's count.
   const [areaWeeks, setAreaWeeks] = useState<OpsSeries["weeks"] | null>(null);
@@ -112,8 +118,18 @@ export default function App() {
   const [alertCode, setAlertCode] = useState<string | null>(null);
   const [rasters, setRasters] = useState<RasterIndex | null>(null);
   const [radar, setRadar] = useState<RadarSettings>(DEFAULT_RADAR);
-  const [guideOpen, setGuideOpen] = useState(() => !guideDismissed());
+  const [guideOpen, setGuideOpen] = useState(() => !PRESENTER && !guideDismissed());
   const [autoplay, setAutoplay] = useState<Autoplay>(() => (!PRESENTER && firstVisit() && !reducedMotion() ? "pending" : "off"));
+  // Camera moves asked of the map: a radar view's opening view, a tour scene's view.
+  const [camera, setCamera] = useState<CameraRequest | null>(null);
+  // Tour: the scene shown (null outside the tour), the tour's language (a scene may set its
+  // own), and the scene waiting for its site's map, radar index or reference fields.
+  const [tour, setTour] = useState<number | null>(PRESENTER ? 0 : null);
+  const [tourLang, setTourLang] = useState<Lang>(URL_LANG ?? "en");
+  const [pending, setPending] = useState<Scene | null>(null);
+  const [mapReady, setMapReady] = useState<string | null>(null); // site whose map has rendered
+  const [rastersSite, setRastersSite] = useState<string | null>(null); // site of the loaded radar index
+  const [seasonNext, setSeasonNext] = useState(false); // open the season panel once the scene's camera is set
 
   useEffect(() => {
     fetch("/api/health")
@@ -129,7 +145,7 @@ export default function App() {
   useEffect(() => {
     const ctrl = new AbortController();
     setWeekly(null);
-    fetch(`/api/weekly/${siteId}`, { signal: ctrl.signal })
+    cachedFetch(`/api/weekly/${siteId}`, { signal: ctrl.signal })
       .then((r) => r.json())
       .then(setWeekly)
       .catch(() => {
@@ -141,7 +157,7 @@ export default function App() {
   useEffect(() => {
     const ctrl = new AbortController();
     setReference(null);
-    fetch(`/api/reference/${siteId}`, { signal: ctrl.signal })
+    cachedFetch(`/api/reference/${siteId}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then(setReference)
       .catch(() => {
@@ -155,10 +171,12 @@ export default function App() {
   useEffect(() => {
     const ctrl = new AbortController();
     setRasters(null);
-    fetch(`/api/rasters/${siteId}`, { signal: ctrl.signal })
+    setRastersSite(null);
+    cachedFetch(`/api/rasters/${siteId}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((idx: RasterIndex | null) => {
         setRasters(idx);
+        setRastersSite(siteId);
         setRadar((s) => ({
           ...s,
           mode: idx ? s.mode : "off",
@@ -169,7 +187,9 @@ export default function App() {
         }));
       })
       .catch(() => {
-        if (!ctrl.signal.aborted) setRasters(null);
+        if (ctrl.signal.aborted) return;
+        setRasters(null);
+        setRastersSite(siteId);
       });
     return () => ctrl.abort();
   }, [siteId]);
@@ -180,7 +200,7 @@ export default function App() {
     if (!site) return;
     const ctrl = new AbortController();
     setAreaWeeks(null);
-    fetch(`/api/ops/${site.site_id}/series?as_of=${site.harvest_date_max}`, { signal: ctrl.signal })
+    cachedFetch(`/api/ops/${site.site_id}/series?as_of=${site.harvest_date_max}`, { signal: ctrl.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((s: OpsSeries | null) => setAreaWeeks(s?.weeks ?? null))
       .catch(() => {
@@ -209,6 +229,8 @@ export default function App() {
   const day = steps.length ? steps[at] : null;
   const radarView = useMemo(() => resolveRadar(lang, rasters, radar, day), [lang, rasters, radar, day]);
   const mapView = viewOf(radar);
+  // A radar view keeps the camera over the image footprint (all layers share it).
+  const imageBounds = mapView !== "harvest" ? (rasters?.layers[0]?.bounds ?? null) : null;
   const hectares =
     areaWeeks && day !== null ? areaWeeks.reduce((n, w) => (toDay(w.start) <= day ? n + w.area_ha : n), 0) : null;
   // The season up to the slider's week (timeline and side panel), and the weekly counts the
@@ -289,8 +311,108 @@ export default function App() {
   const switchView = (v: View) => {
     setPlaying(false);
     setAutoplay("off");
+    setCamera(null); // a map created again on return opens on its own view
     setView(v);
   };
+
+  // ---- tour (tour.ts): a scene sets its site, screen and language at once; the rest once
+  // that site's map has rendered and its radar index (and, for a reference field, the
+  // reference fields) have loaded, so nothing a site change resets is set too early.
+  useEffect(() => {
+    if (PRESENTER) preloadTour();
+  }, []);
+  useEffect(() => setMapReady(null), [view, siteId]);
+  const goTo = (i: number) => {
+    const scene = SCENES[i];
+    setTour(i);
+    setPlaying(false);
+    setAutoplay("off");
+    setGuideOpen(false);
+    setAlertsOpen(false);
+    setAlertCode(null);
+    setByDate(false);
+    setLang(scene.state.lang ?? tourLang);
+    if (scene.state.site !== siteId) setSelected(null);
+    setSiteId(scene.state.site);
+    setView(scene.state.view);
+    setPending(scene);
+    setCamera(null); // not applied again to a map created for this scene
+    // keys go to the tour, not to a control focused in the previous scene
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  };
+  const leaveTour = () => {
+    setTour(null);
+    setPending(null);
+  };
+  useEffect(() => {
+    if (PRESENTER) goTo(0);
+  }, []); // once, on the first render
+  useEffect(() => {
+    if (!pending) return;
+    const s = pending.state;
+    const field = s.selected?.kind === "reference" ? reference?.features.find((f) => f.properties.field_id === s.selected!.id) : undefined;
+    if (site?.site_id !== s.site || !steps.length || rastersSite !== s.site) return;
+    if (s.view === "explorer" && mapReady !== s.site) return;
+    if (s.camera === "reference" && !field) return;
+    setPending(null);
+    const base: RadarSettings = {
+      ...DEFAULT_RADAR,
+      date: rasters?.dates[0] ?? null,
+      changeId: rasters ? (changeLayers(rasters)[0]?.id ?? null) : null,
+      left: rasters?.dates[0] ?? null,
+      right: rasters?.dates.at(-1) ?? null,
+    };
+    setRadar(viewPreset(s.mapView, rasters, base));
+    setAsOf(s.timeline === "start" || s.timeline === "play" ? steps[0] : s.timeline === "end" ? steps[steps.length - 1] : toDay(s.timeline));
+    setPlaying(s.timeline === "play");
+    setSelected(s.selected);
+    setReferenceOn(s.reference);
+    // The camera is fitted to the whole map, then the season panel opens over its lower part
+    // (the map's own effect runs before this component's), so the view does not depend on
+    // the previous scene's panel.
+    setSeasonOpen(false);
+    setSeasonNext(s.season === "expanded");
+    setZoomTo(null);
+    if (s.view === "explorer" && s.camera)
+      setCamera({ target: s.camera === "reference" ? field!.properties.bbox : s.camera });
+  }, [pending, site, steps, rastersSite, mapReady, reference, rasters]);
+  useEffect(() => {
+    if (!seasonNext) return;
+    setSeasonNext(false);
+    setSeasonOpen(true);
+    setSeasonExpanded(true);
+  }, [seasonNext]);
+
+  // Keys while the tour is on: Next on the right arrow, Space and PageDown, Back on the left
+  // arrow and PageUp (presentation remotes send these), Escape leaves. Arrows and Space keep
+  // their usual meaning in a form control, Space on a button or link.
+  const tourRef = useRef({ tour, goTo, leaveTour });
+  tourRef.current = { tour, goTo, leaveTour };
+  useEffect(() => {
+    if (tour === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      const { tour: at, goTo: go, leaveTour: leave } = tourRef.current;
+      if (at === null || e.altKey || e.ctrlKey || e.metaKey) return;
+      const el = e.target instanceof Element ? e.target : null;
+      const field = !!el?.closest("input, select, textarea, [contenteditable='true']");
+      const next = e.key === "PageDown" || (!field && (e.key === "ArrowRight" || (e.key === " " && !el?.closest("button, a"))));
+      const back = e.key === "PageUp" || (!field && e.key === "ArrowLeft");
+      if (e.key === "Escape") return leave();
+      if (!next && !back) return;
+      e.preventDefault();
+      if (next && at < SCENES.length - 1) go(at + 1);
+      if (back && at > 0) go(at - 1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tour === null]); // the current step and handlers are read from tourRef
+
+  // Read by the headless checks: the scene shown and whether it is still being applied.
+  useEffect(() => {
+    Object.assign(window, { __tour: { step: tour, pending: pending !== null } });
+  }, [tour, pending]);
+
+  const tourCard = tour !== null && <TourCard step={tour} presenter={PRESENTER} onGo={goTo} onClose={leaveTour} />;
 
   return (
     <LangContext.Provider value={lang}>
@@ -351,7 +473,10 @@ export default function App() {
             label={t(lang, "language")}
             size="sm"
             value={lang}
-            onChange={setLang}
+            onChange={(l) => {
+              setLang(l);
+              if (tour !== null && !SCENES[tour].state.lang) setTourLang(l); // the tour follows the switch
+            }}
             options={LANGS.map((l) => ({ value: l, label: l.toUpperCase(), testId: `lang-${l}` }))}
           />
           {/* Kept for the headless checks (scripts/screenshot.mjs), not shown. */}
@@ -363,15 +488,15 @@ export default function App() {
               api: {api}
             </span>
           </div>
-          {view === "explorer" && (
+          {!PRESENTER && (
             <button
               type="button"
               className="btn btn-ghost btn-sm guide-btn"
-              aria-pressed={guideOpen}
-              data-testid="guide-open"
-              onClick={() => setGuideOpen(!guideOpen)}
+              aria-pressed={tour !== null}
+              data-testid="tour-start"
+              onClick={() => (tour === null ? goTo(0) : leaveTour())}
             >
-              <Icon name="help" /> {t(lang, "startHere")}
+              <Icon name="help" /> {t(lang, "takeTour")}
             </button>
           )}
         </div>
@@ -379,6 +504,7 @@ export default function App() {
       {view === "ops" ? (
         <main className="main ops-main">
           {site && asOf !== null && <OpsView site={site} day={asOf} onDay={setAsOf} lang={lang} />}
+          {tourCard}
         </main>
       ) : (
         <main className={`main${seasonOpen ? " season-open" : ""}${seasonOpen && seasonExpanded ? " season-expanded" : ""}`}>
@@ -386,6 +512,9 @@ export default function App() {
             <div className="map-area">
               <MapView
                 site={site}
+                camera={camera}
+                imagery={mapView !== "harvest"}
+                imageBounds={imageBounds}
                 day={day}
                 zoomTo={zoomTo}
                 reference={reference}
@@ -401,12 +530,19 @@ export default function App() {
                 compare={radar.mode === "compare"}
                 byDate={byDate}
                 sideLabels={sideLabels}
-                onReady={startAutoplay}
+                onReady={(id) => {
+                  setMapReady(id);
+                  startAutoplay(id);
+                }}
               />
               <LayersPanel
                 site={site}
                 view={mapView}
-                onView={(v) => setRadar(viewPreset(v, rasters, radar))}
+                onView={(v) => {
+                  // entering a radar view from the harvest map opens on the site's radar area
+                  if (mapView === "harvest" && v !== "harvest") setCamera({ target: "radar", animate: true });
+                  setRadar(viewPreset(v, rasters, radar));
+                }}
                 byDate={byDate}
                 onByDate={() => setByDate(!byDate)}
                 reference={reference}
@@ -427,8 +563,10 @@ export default function App() {
                     if (!playing) togglePlay();
                   }}
                   onOpenOps={() => switchView("ops")}
+                  onTour={() => goTo(0)}
                 />
               )}
+              {tourCard}
             </div>
             {day !== null && (
               <TimeSlider

@@ -23,9 +23,9 @@ function remember() {
   }
 }
 
-type Props = { onClose: () => void; onPlay: () => void; onOpenOps: () => void };
+type Props = { onClose: () => void; onPlay: () => void; onOpenOps: () => void; onTour: () => void };
 
-export default function Guide({ onClose, onPlay, onOpenOps }: Props) {
+export default function Guide({ onClose, onPlay, onOpenOps, onTour }: Props) {
   const lang = useLang();
   const first = useRef<HTMLButtonElement>(null);
   const close = () => {
@@ -94,6 +94,17 @@ export default function Guide({ onClose, onPlay, onOpenOps }: Props) {
         </li>
       </ol>
       <div className="guide-foot">
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          data-testid="guide-tour"
+          onClick={() => {
+            close();
+            onTour();
+          }}
+        >
+          {t(lang, "takeTour")}
+        </button>
         <button type="button" className="btn btn-ghost btn-sm" data-testid="guide-dismiss" onClick={close}>
           {t(lang, "guideDismiss")}
         </button>

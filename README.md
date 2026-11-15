@@ -51,8 +51,9 @@ What exists right now:
   standing green, no harvest date subdued, over a dark basemap; while the timeline advances the
   week's harvests light up and fade into amber; colour by harvest date under More options),
   **Radar image** (the NISAR HV image following the timeline) and **Before / after** (first
-  against last acquisition with a draggable divider, labelled on each side); a legend of at
-  most three entries. The map opens on the extent of the site's cane fields; on a first visit
+  against last acquisition with a draggable divider, labelled on each side); both radar views
+  open close over a dense cane area of the site, with faint field edges, and zoomed out stay
+  within the image; a legend of at most three entries. The map opens on the extent of the site's cane fields; on a first visit
   the season plays once by itself (not with reduced motion, not with `?present=1`); the
   slider draws the season's weekly harvests along its track, and the timeline gives the share
   of the mapped cane harvested;
@@ -130,6 +131,22 @@ What exists right now:
 **Planned during the event:** API, map, field detail, season dashboard, alerts, raster
 swipe, site switcher, deployment. Build order and estimates:
 [HACKATHON_PLAN.md](HACKATHON_PLAN.md).
+
+## Guided tour
+
+Nine scenes, each putting the app into one prepared state (defined in `web/src/tour.ts`): the
+harvest map, the season playing, Before / after, one example field, radar vs mill reports,
+reference field p36, mill operations in Spanish, Brazil, and links to the findings and code.
+
+* **Self-guided:** "Take the tour" in the top bar; each scene's caption shows in a small card
+  with Back / Next and one dot per scene.
+* **Presenter:** <https://zafraradar.earth/?present=1> (locally
+  `http://localhost:5174/?present=1`), with `&lang=es` or `&lang=en`. Starts on scene 1 with
+  captions hidden and a small step indicator, no first-visit autoplay or guide, and fetches
+  what later scenes need while the first is shown.
+* **Keys:** right arrow, Space or PageDown for the next scene; left arrow or PageUp for the
+  previous one (presentation remotes send these); Escape leaves the tour. Going back restores
+  the earlier scene; inside a scene the app works as usual.
 
 ## Run
 

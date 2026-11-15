@@ -41,7 +41,7 @@ const VIEWS: [MapViewKind, "viewHarvest" | "viewRadar" | "viewCompare"][] = [
   ["radar", "viewRadar"],
   ["compare", "viewCompare"],
 ];
-// The HV ramp's ends (black −25 dB, white −8 dB; docs/API.md) for the bright / dark entries.
+// The HV ramp's ends (white −8 dB, black −25 dB; docs/API.md), bright first, for the bar.
 const BRIGHT = "#f4f4f4";
 const DARK = "#141414";
 
@@ -81,8 +81,8 @@ function LayerSwitch({ title, tip, on, disabled, hint, testId, onClick, children
   );
 }
 
-function Swatch({ color, opacity, border }: { color: string; opacity?: number; border?: boolean }) {
-  return <span className={`swatch${border ? " swatch-border" : ""}`} style={{ background: color, opacity }} />;
+function Swatch({ color, opacity }: { color: string; opacity?: number }) {
+  return <span className="swatch" style={{ background: color, opacity }} />;
 }
 
 /** "No harvest date" as the map draws it: a faint fill and a thin light outline, here on
@@ -138,14 +138,13 @@ function Legend({ lang, site, view, byDate, rasters, radarView }: {
     <div className="legend" data-testid="legend" data-view={view}>
       <InfoTip text={t(lang, "tipRadar")} />
       {hv ? (
-        <>
-          <div className="legend-item">
-            <Swatch color={BRIGHT} border /> {t(lang, "legBright")}
+        <div className="legend-bar" data-testid="radar-legend-bar">
+          <div className="ramp ramp-border" style={{ background: `linear-gradient(to right, ${BRIGHT}, ${DARK})` }} aria-hidden="true" />
+          <div className="legend-bar-labels">
+            <span>{t(lang, "legBright")}</span>
+            <span>{t(lang, "legDark")}</span>
           </div>
-          <div className="legend-item">
-            <Swatch color={DARK} /> {t(lang, "legDark")}
-          </div>
-        </>
+        </div>
       ) : (
         layer && <div className="legend-item">{productName(lang, layer.product)}</div>
       )}

@@ -163,8 +163,8 @@ const EN = {
   legByDate: "Harvested, by harvest date",
   tipHarvestMap:
     "Each shape is a patch of sugarcane (a field segment). Green: still standing at the timeline date; amber: the radar has detected its harvest; grey: the radar never dated a harvest there.",
-  legBright: "Bright: standing cane",
-  legDark: "Dark: cut cane or bare soil",
+  legBright: "Bright: tall vegetation, such as standing cane and trees",
+  legDark: "Dark: cut cane, bare soil or water",
   radarImageOf: "Image of {date}",
   radarLayerOf: "{product}, {date}",
   tipRadar:
@@ -175,6 +175,8 @@ const EN = {
   sideEarlier: "Earlier · {date}",
   sideLater: "Later · {date}",
   sideChange: "HV change · {dates}",
+  sideOnLeft: "Left: {label}",
+  sideOnRight: "Right: {label}",
   zoomInRadar: "Zoom in to see the radar imagery.",
   moreOptions: "More options",
   colourByDate: "Colour harvested fields by date",
@@ -450,6 +452,18 @@ const EN = {
     "The same data as a mill's field department would use it: this week's harvested fields, lists to export and a weekly report.",
   openOps: "Open Mill operations",
   guideDismiss: "Got it, don't show again",
+  // guided tour (TourCard.tsx, tour.ts)
+  takeTour: "Take the tour",
+  tourStep: "Step {n} of {of}",
+  tourStepShort: "{n} / {of}",
+  tourScenes: "Tour steps",
+  tourBack: "Back",
+  tourNext: "Next",
+  tourFinish: "Finish",
+  tourLeave: "Leave the tour",
+  tourFindings: "Findings (docs/FINDINGS.md)",
+  tourAppRepo: "This app's code (zafra-radar-app)",
+  tourLibraryRepo: "The research library (zafra-radar-research)",
 };
 export type Key = keyof typeof EN;
 
@@ -596,8 +610,8 @@ const ES: Record<Key, string> = {
   legByDate: "Cortada, según la fecha de corte",
   tipHarvestMap:
     "Cada figura es un tramo de caña (un segmento de parcela). Verde: sigue en pie en la fecha de la línea de tiempo; ámbar: el radar ya detectó su corte; gris: el radar nunca le asignó fecha de corte.",
-  legBright: "Claro: caña en pie",
-  legDark: "Oscuro: caña cortada o suelo desnudo",
+  legBright: "Claro: vegetación alta, como caña en pie y árboles",
+  legDark: "Oscuro: caña cortada, suelo desnudo o agua",
   radarImageOf: "Imagen del {date}",
   radarLayerOf: "{product}, {date}",
   tipRadar:
@@ -608,6 +622,8 @@ const ES: Record<Key, string> = {
   sideEarlier: "Antes · {date}",
   sideLater: "Después · {date}",
   sideChange: "Cambio en HV · {dates}",
+  sideOnLeft: "Izquierda: {label}",
+  sideOnRight: "Derecha: {label}",
   zoomInRadar: "Acércate para ver la imagen de radar.",
   moreOptions: "Más opciones",
   colourByDate: "Colorear las parcelas cortadas según la fecha",
@@ -874,6 +890,17 @@ const ES: Record<Key, string> = {
     "Los mismos datos como los usaría el departamento de campo de un ingenio: las parcelas cortadas esta semana, listas para exportar y un reporte semanal.",
   openOps: "Abrir Operación del ingenio",
   guideDismiss: "Entendido, no volver a mostrar",
+  takeTour: "Haz el recorrido",
+  tourStep: "Paso {n} de {of}",
+  tourStepShort: "{n} / {of}",
+  tourScenes: "Pasos del recorrido",
+  tourBack: "Atrás",
+  tourNext: "Siguiente",
+  tourFinish: "Terminar",
+  tourLeave: "Salir del recorrido",
+  tourFindings: "Hallazgos (docs/FINDINGS.md)",
+  tourAppRepo: "El código de esta app (zafra-radar-app)",
+  tourLibraryRepo: "La biblioteca de investigación (zafra-radar-research)",
 };
 
 const DICT: Record<Lang, Record<Key, string>> = { en: EN, es: ES };

@@ -3,6 +3,7 @@ import type { Site } from "./App";
 import { count, formatDate, formatNumber, siteSubtitle, t, tValue, type Key, type Lang } from "./i18n";
 import { Icon } from "./icons";
 import OpsMap, { type OpsFocus } from "./OpsMap";
+import { cachedFetch } from "./prefetch";
 import {
   LIST_DAYS,
   OPS_PAGE,
@@ -30,7 +31,7 @@ const TABS: Tab[] = ["harvested", "notDetected", "fires"];
 const TAB_LABEL = { harvested: "tabHarvested", notDetected: "tabNotDetected", fires: "tabFires" } as const;
 
 const getJson = <T,>(url: string, signal?: AbortSignal): Promise<T> =>
-  fetch(url, { signal }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))));
+  cachedFetch(url, { signal }).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))));
 
 /** A paged list of `base` (a URL with its query, without limit / offset): the first page on
  * every new `base`, then "Load more". An answer for an older `base` is dropped. */

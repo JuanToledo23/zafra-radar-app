@@ -15,7 +15,7 @@ import { ALERT_OUTLINE_COLOR } from "./alerts";
 import { t, useLang } from "./i18n";
 import { Icon } from "./icons";
 import { reducedMotion } from "./ui";
-import type { RasterLayer, RadarView } from "./radar";
+import { RADAR_AREAS, type RasterLayer, type RadarView } from "./radar";
 import type { ReferenceCollection } from "./reference";
 import {
   DATED_OPACITY,
@@ -82,6 +82,10 @@ const FRESH_HOLD_MS = 150;
 const FRESH_FADE_MS = 400;
 // Opening view: the extent of the site's cane fields, with room for the zoom buttons.
 const FIT_PADDING = { top: 24, bottom: 24, left: 24, right: 56 };
+// Opening view of the radar views: the site's radar area (RADAR_AREAS), shifted right of most
+// of the map panel, which covers only the window's top-left corner.
+const RADAR_PADDING = { top: 24, bottom: 24, left: 220, right: 56 };
+const CAMERA_MS = 500;
 // Divider hint on entering Before / after: one small sway either side, then back to the middle.
 const HINT_DELAY_MS = 500;
 const HINT_MS = 1100;
@@ -117,6 +121,15 @@ const SEGMENT_LINE = {
   color: hovered("#ffffff", dated("#1d1d1d", UNDATED_OUTLINE)),
   width: hovered(2, dated(0.3, 0.5)),
   opacity: hovered(1, dated(0.5, 0.2)),
+};
+
+// Over radar imagery: thin, neutral, faint edges and no fill, faded in from the zoom at which
+// the fields are large enough for the edges not to cover their insides (fields of about
+// 1-3 ha are some 10 px wide at zoom 13, 20 px at 14).
+const RADAR_EDGE = {
+  color: hovered("#ffffff", "#e8e8e8"),
+  width: hovered(2, 0.6),
+  opacity: ["interpolate", ["linear"], ["zoom"], 13, 0, 14, hovered(1, 0.35)],
 };
 
 function addSegmentLayers(map: maplibregl.Map, tiles: string) {
@@ -293,8 +306,16 @@ export function placeLabels(width: number, height: number, split: number, sizes:
   return placed;
 }
 
+/** A camera move asked by the app (a new object each time): the site's cane fields, its
+ * radar area, or a box (a field); `animate` eases instead of jumping (never with reduced
+ * motion). */
+export type CameraRequest = { target: "cane" | "radar" | Box; animate?: boolean };
+
 type Props = {
   site: Site | null;
+  camera: CameraRequest | null;
+  imagery: boolean; // a radar view is chosen (its image may still be loading)
+  imageBounds: Box | null; // the site's radar image footprint, while a radar view is chosen
   day: number | null;
   zoomTo: { bbox: [number, number, number, number] } | null;
   reference: ReferenceCollection | null;
@@ -314,7 +335,7 @@ type Props = {
 };
 
 export default function MapView({
-  site, day, zoomTo, reference, referenceOn, alertCode, selected, onSelect, onBasemap,
+  site, camera, imagery, imageBounds, day, zoomTo, reference, referenceOn, alertCode, selected, onSelect, onBasemap,
   radar, radarOpacity, radarOutlines, radarAttribution, compare, byDate, sideLabels, onReady,
 }: Props) {
   const lang = useLang();
@@ -334,6 +355,10 @@ export default function MapView({
   onReadyRef.current = onReady;
   const extents = useRef(new Map<string, Box>()); // cane extent per site, once measured
   const shownDay = useRef<{ site: string; day: number } | null>(null); // last painted slider day
+  const imageryRef = useRef(imagery);
+  imageryRef.current = imagery;
+  const imageBoundsRef = useRef(imageBounds);
+  imageBoundsRef.current = imageBounds;
 
   useEffect(() => {
     const map = new maplibregl.Map({
@@ -426,9 +451,13 @@ export default function MapView({
     addSegmentLayers(map, tilesUrl(site.site_id));
     REF_LAYERS.forEach((id) => map.getLayer(id) && map.moveLayer(id)); // keep outlines on top
     // Opening view: the cane fields' extent. Measured once per site from the tiles of its
-    // bbox, then the camera eases to it (jumps with reduced motion).
+    // bbox, then the camera eases to it (jumps with reduced motion). In a radar view: the
+    // site's radar area, once the extent is known.
     const known = extents.current.get(site.site_id);
-    map.fitBounds(known ?? site.bbox, { padding: known ? FIT_PADDING : 40, duration: 0 });
+    const area = () => (imageryRef.current ? RADAR_AREAS[site.site_id] : undefined);
+    map.setMaxBounds(null); // the previous site's image footprint
+    if (known && area()) map.fitBounds(area()!, { padding: RADAR_PADDING, duration: 0 });
+    else map.fitBounds(known ?? site.bbox, { padding: known ? FIT_PADDING : 40, duration: 0 });
     onSelect(null);
     let live = true;
     const ready = () => {
@@ -442,7 +471,8 @@ export default function MapView({
       const box = caneExtent(map);
       if (!box) return ready();
       extents.current.set(site.site_id, box);
-      map.fitBounds(box, { padding: FIT_PADDING, duration: reducedMotion() ? 0 : 500 });
+      const to = area();
+      map.fitBounds(to ?? box, { padding: to ? RADAR_PADDING : FIT_PADDING, duration: reducedMotion() ? 0 : CAMERA_MS });
       map.once("idle", ready);
     });
     return () => {
@@ -459,10 +489,11 @@ export default function MapView({
     const color = harvestColorExpression(toDay(site.harvest_date_min), toDay(site.harvest_date_max), day, byDate);
     map.setPaintProperty(FILL, "fill-color", color);
     map.setPaintProperty(FILL, "fill-opacity", radarOn ? 0 : SEGMENT_FILL_OPACITY);
-    map.setPaintProperty(LINE, "line-color", radarOn ? hovered("#ffffff", color) : SEGMENT_LINE.color);
-    map.setPaintProperty(LINE, "line-width", radarOn ? hovered(2.5, 1.2) : SEGMENT_LINE.width);
-    map.setPaintProperty(LINE, "line-opacity", radarOn ? hovered(1, 0.9) : SEGMENT_LINE.opacity);
-    map.setLayoutProperty(LINE, "visibility", radarOn && !radarOutlines ? "none" : "visible");
+    // With "Field outlines on top" (More options) the edges carry the harvest colours.
+    const line = !radarOn ? SEGMENT_LINE : radarOutlines ? { color: hovered("#ffffff", color), width: hovered(2.5, 1.2), opacity: hovered(1, 0.9) } : RADAR_EDGE;
+    map.setPaintProperty(LINE, "line-color", line.color);
+    map.setPaintProperty(LINE, "line-width", line.width);
+    map.setPaintProperty(LINE, "line-opacity", line.opacity);
   }, [loaded, site, day, radarOn, radarOutlines, byDate]);
 
   // The timeline advanced: the fields harvested in the latest week (the Monday-Sunday week
@@ -629,6 +660,37 @@ export default function MapView({
     map.fitBounds([w, s, e, n], { padding: 80, maxZoom: 17, animate: !reducedMotion() });
   }, [loaded, zoomTo]);
 
+  // Camera moves asked by the app (a map view's opening view, a tour scene).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!loaded || !map || !site || !camera) return;
+    const { target } = camera;
+    const duration = camera.animate && !reducedMotion() ? CAMERA_MS : 0;
+    if (!imageBoundsRef.current) map.setMaxBounds(null); // left a radar view: not held to its image
+    map.resize(); // the map's size now, if a panel has just opened or closed
+    if (target === "cane") map.fitBounds(extents.current.get(site.site_id) ?? site.bbox, { padding: FIT_PADDING, duration });
+    else if (target === "radar") {
+      const area = RADAR_AREAS[site.site_id];
+      if (area) map.fitBounds(area, { padding: RADAR_PADDING, duration });
+    } else map.fitBounds(target, { padding: 80, maxZoom: 17, duration });
+  }, [loaded, camera]); // a new request moves the camera; a new site does not
+
+  // In a radar view the camera stays over the image footprint, so zoomed out the image fills
+  // the map with no empty bands at its sides. Set after a camera move in progress ends.
+  const boundsKey = imageBounds?.join() ?? "";
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!loaded || !map) return;
+    const apply = () => map.setMaxBounds(imageBounds ?? null);
+    if (imageBounds && map.isMoving()) {
+      map.once("moveend", apply);
+      return () => {
+        map.off("moveend", apply);
+      };
+    }
+    apply();
+  }, [loaded, boundsKey]); // the bounds by value
+
   const setDivider = (f: number) => {
     splitRef.current = f;
     setSplit(f);
@@ -671,12 +733,14 @@ export default function MapView({
   const labels = useRef<(HTMLDivElement | null)[]>([null, null]);
   const [labelRects, setLabelRects] = useState<Rect[] | null>(null);
   const [layout, setLayout] = useState(0); // bumped when the map or an overlay is resized
+  // A label pinned across the divider says in words which side it belongs to.
+  const [crossed, setCrossed] = useState<[boolean, boolean]>([false, false]);
   useEffect(() => {
     const el = wrap.current;
     if (!dividerOn || !el) return;
     const ro = new ResizeObserver(() => setLayout((n) => n + 1));
     ro.observe(el);
-    el.parentElement?.querySelectorAll(".layers, .guide").forEach((o) => ro.observe(o));
+    el.parentElement?.querySelectorAll(".layers, .guide, .tour-card").forEach((o) => ro.observe(o));
     return () => ro.disconnect();
   }, [dividerOn]);
   useLayoutEffect(() => {
@@ -693,13 +757,17 @@ export default function MapView({
       return { x: b.left - box.left, y: b.top - box.top, w: b.width, h: b.height };
     };
     const obstacles = [
-      ...(el.parentElement?.querySelectorAll(".layers, .guide") ?? []),
+      ...(el.parentElement?.querySelectorAll(".layers, .guide, .tour-card") ?? []),
       ...el.querySelectorAll(".maplibregl-ctrl-top-right, .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left, .radar-zoom-note"),
     ]
       .map(rel)
       .filter((o) => o.w > 0 && o.h > 0);
-    setLabelRects(placeLabels(box.width, box.height, split, [[l.offsetWidth, l.offsetHeight], [r.offsetWidth, r.offsetHeight]], obstacles));
-  }, [dividerOn, split, sideLabels, layout, zoom, lang]);
+    const rects = placeLabels(box.width, box.height, split, [[l.offsetWidth, l.offsetHeight], [r.offsetWidth, r.offsetHeight]], obstacles);
+    setLabelRects(rects);
+    // A wider label (with its side) never fits where the shorter one did not, so this settles.
+    const across: [boolean, boolean] = [rects[0].x + rects[0].w > x0 + 1, rects[1].x < x0 - 1];
+    if (across[0] !== crossed[0] || across[1] !== crossed[1]) setCrossed(across);
+  }, [dividerOn, split, sideLabels, layout, zoom, lang, crossed]);
 
   return (
     <div ref={wrap} className="map-wrap">
@@ -736,16 +804,14 @@ export default function MapView({
               style={labelRects ? { transform: `translate(${labelRects[i].x}px, ${labelRects[i].y}px)` } : { visibility: "hidden" }}
               data-testid={`radar-side-${side}`}
             >
-              {side === "left" && <Icon name="chevronLeft" size={14} />}
               <span className="radar-side-text">
-                {(sideLabels?.[i] ?? "—").split(/(?<= ·) /).map((part, j) => (
+                {(crossed[i] ? t(lang, side === "left" ? "sideOnLeft" : "sideOnRight", { label: sideLabels?.[i] ?? "—" }) : (sideLabels?.[i] ?? "—")).split(/(?<= ·) /).map((part, j) => (
                   <Fragment key={j}>
                     {j > 0 && " "}
                     <span>{part}</span>
                   </Fragment>
                 ))}
               </span>
-              {side === "right" && <Icon name="chevronRight" size={14} />}
             </div>
           ))}
         </>

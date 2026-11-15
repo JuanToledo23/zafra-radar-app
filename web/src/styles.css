@@ -211,6 +211,7 @@ a { color: var(--accent); }
 /* map panel: the three views, their legend, then "More options" */
 .layers {
   position: absolute; top: 12px; left: 12px; z-index: 4; width: 384px; max-height: calc(100% - 24px);
+  overflow: hidden; /* kept on the map when the season panel leaves only a strip of it */
   display: flex; flex-direction: column; gap: 10px; padding: 10px; background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-2);
 }
@@ -224,7 +225,11 @@ a { color: var(--accent); }
 .legend-ramp { margin-bottom: 6px; }
 .legend-date { font-size: 13px; color: var(--text-2); margin: 6px 0 0; font-variant-numeric: tabular-nums; }
 .legend-date.note { color: var(--warn-text); }
-.swatch-border { box-shadow: inset 0 0 0 1px var(--border-strong); }
+/* radar legend: one bright-to-dark bar, what bright and what dark mean under its two ends */
+.legend-bar .ramp { height: 8px; }
+.ramp-border { box-shadow: inset 0 0 0 1px var(--border-strong); }
+.legend-bar-labels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; font-size: 13px; color: var(--text); line-height: 1.3; }
+.legend-bar-labels > :last-child { text-align: right; }
 .layers-more { border-top: 1px solid var(--border); margin: 0 -10px -4px; padding: 0 10px; min-height: 0; display: flex; flex-direction: column; }
 .layers-more .disclosure-body { overflow-y: auto; min-height: 0; padding: 0 4px; }
 .layers-more .disclosure-body > :last-child { border-bottom: 0; }
@@ -306,7 +311,34 @@ a { color: var(--accent); }
   display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex: none;
   border-radius: 50%; background: var(--accent-soft); color: var(--accent-strong); font-weight: 700; font-size: 13px;
 }
-.guide-foot { display: flex; justify-content: flex-end; margin-top: 8px; }
+.guide-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+
+/* guided tour (TourCard.tsx): the scene's card bottom-left over the map (the guide's corner is
+   bottom-right), over the mill operations map on that screen; presenter mode's step indicator */
+.tour-card {
+  position: absolute; left: 12px; bottom: 36px; z-index: 6; width: min(360px, calc(100% - 24px));
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-3);
+  padding: 10px 14px 12px;
+}
+.ops-main .tour-card { position: fixed; left: auto; right: 16px; bottom: 16px; }
+.tour-head { display: flex; align-items: center; justify-content: space-between; margin: -2px -6px 0 0; }
+.tour-count { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.tour-title { font-size: 16px; font-weight: 650; margin: 0 0 4px; }
+.tour-caption { font-size: 14px; color: var(--text-2); margin: 0; }
+.tour-links { margin: 8px 0 0; padding-left: 18px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+.tour-links a { color: var(--accent); }
+.tour-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.tour-dots { flex: 1; display: flex; gap: 2px; }
+.tour-dot { width: 16px; height: 16px; padding: 0; border: 0; background: none; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+.tour-dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #c9d0d9; }
+.tour-dot.on::before { background: var(--accent); }
+.tour-dot:hover::before { background: var(--border-strong); }
+.tour-dot.on:hover::before { background: var(--accent-strong); }
+.tour-card.tour-at-panel { position: fixed; left: auto; right: 20px; bottom: 16px; width: calc(var(--panel-w) - 40px); }
+.tour-step {
+  position: fixed; right: 10px; bottom: 8px; z-index: 60; pointer-events: none; font-size: 12px; font-variant-numeric: tabular-nums;
+  color: #fff; background: rgba(17, 24, 39, 0.5); border-radius: 999px; padding: 1px 8px;
+}
 
 /* timeline bar, docked under the map */
 .timeline {
@@ -596,6 +628,7 @@ a { color: var(--accent); }
   .layers { width: calc(100% - 64px); }
   .view-seg button { font-size: 13px; height: 34px; }
   .guide { position: fixed; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 75vh; overflow-y: auto; z-index: 50; }
+  .tour-card, .ops-main .tour-card { position: fixed; left: 8px; right: 8px; bottom: 8px; width: auto; z-index: 50; }
   .timeline { flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; }
   .timeline-track { order: 5; flex-basis: 100%; }
   .timeline-count { margin-left: auto; }
