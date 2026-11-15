@@ -2,6 +2,7 @@
 (python -m app.loader --site all). Base URL: ZAFRA_API_URL, default http://localhost:8010.
 Every test is skipped when the API does not answer /health."""
 
+import http.client
 import json
 import math
 import os
@@ -447,3 +448,68 @@ def test_explorer_tiles_carry_no_fire_days():
     x, y = tile_of(-99.2, 18.62, 12)
     status, _, body = get(f"/tiles/morelos/12/{x}/{y}.pbf")
     assert status == 200 and b"harvest_day" in body and b"fire_day" not in body
+
+
+@pytest.mark.parametrize("site", ["morelos", "brazil"])
+def test_rasters_index(site):
+    r = get_json(f"/rasters/{site}")
+    assert r["site"] == site and len(r["dates"]) == 6 and r["dates"] == sorted(r["dates"])
+    assert (r["minzoom"], r["maxzoom"]) == (10, 14) and len(r["bounds"]) == 4
+    assert "NISAR" in r["attribution"]["text"] and "DATA_SOURCES.md" in r["attribution"]["source"]
+    layers = {layer["id"]: layer for layer in r["layers"]}
+    assert len(layers) == 24
+    products = [layer["product"] for layer in r["layers"]]
+    assert {p: products.count(p) for p in set(products)} == {"HV": 6, "HH": 6, "cross-ratio": 6, "change": 6}
+    for layer in r["layers"]:
+        assert layer["meaning"]["text"] and layer["meaning"]["source"].startswith("zafra-radar-research ")
+        assert layer["tile_url"] == f"/rasters/{site}/{layer['id']}/{{z}}/{{x}}/{{y}}.png"
+        if layer["product"] == "change":
+            assert layer["date"] is None and layer["date_pair"][0] < layer["date_pair"][1]
+        else:
+            assert layer["date"] in r["dates"] and layer["date_pair"] is None
+    assert [layer["id"] for layer in r["layers"] if layer["season"]] == ["hv_change_season"]
+
+
+@pytest.mark.parametrize("site", ["morelos", "brazil"])
+def test_raster_tile_png_with_cache_header(site):
+    r = get_json(f"/rasters/{site}")
+    w, s, e, n = r["bounds"]
+    x, y = tile_of((w + e) / 2, (s + n) / 2, 12)
+    layer = next(layer["id"] for layer in r["layers"] if layer["product"] == "HV")
+    with urllib.request.urlopen(f"{BASE}/rasters/{site}/{layer}/12/{x}/{y}.png", timeout=30) as resp:
+        assert resp.status == 200 and resp.headers["Content-Type"] == "image/png"
+        assert resp.headers["Cache-Control"] == "public, max-age=86400"
+        assert resp.read(8) == b"\x89PNG\r\n\x1a\n"
+
+
+def test_raster_missing_tile_unknown_layer_and_site():
+    assert get("/rasters/morelos/hv_20251123/12/0/0.png")[0] == 204  # outside the tile set
+    assert get("/rasters/morelos/hv_20251123/3/1/1.png")[0] == 204  # below minzoom
+    assert get("/rasters/morelos/hv_20260624/12/919/1832.png")[0] == 404  # a Brazil layer id
+    assert get("/rasters/morelos/nope/12/919/1832.png")[0] == 404
+    assert get("/rasters/nowhere")[0] == 404
+    assert get("/rasters/nowhere/hv_20251123/12/919/1832.png")[0] == 404
+    assert get("/rasters/morelos/hv_20251123/12/x/1832.png")[0] == 400
+
+
+@pytest.mark.parametrize("path", [
+    "/rasters/morelos/../../../configs/morelos.yaml",
+    "/rasters/morelos/hv_20251123/../../../../configs/morelos.yaml",
+    "/rasters/morelos/..%2F..%2F..%2Fconfigs/12/919/1832.png",
+    "/rasters/morelos/%2e%2e/12/919/1832.png",
+    "/rasters/%2e%2e/hv_20251123/12/919/1832.png",
+    "/rasters/..%2Fmorelos/hv_20251123/12/919/1832.png",
+    "/rasters/morelos/hv_20251123/12/919/..%2F..%2F..%2Fhh_20251123%2F12%2F919%2F1832.png",
+    "/rasters/morelos/hv_20251123/-1/0/0.png",
+    "/rasters/morelos/hv_20251123%00/12/919/1832.png",
+    "/rasters/%2e%2e",
+])
+def test_raster_paths_cannot_escape_the_tile_directory(path):
+    # http.client sends the path byte for byte (no client-side normalisation of "..").
+    conn = http.client.HTTPConnection(BASE.split("://", 1)[1], timeout=30)
+    conn.request("GET", path)
+    resp = conn.getresponse()
+    body = resp.read()
+    conn.close()
+    assert resp.status in (400, 404), (path, resp.status, body[:100])
+    assert resp.getheader("Content-Type") == "application/json"

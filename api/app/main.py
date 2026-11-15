@@ -1,6 +1,6 @@
 """Zafra Radar API: /health, /version and the read endpoints over the tables filled by
-app.loader (/sites, /tiles, /segments, /weekly, /reference, /alerts, /ops). Endpoint
-reference: docs/API.md."""
+app.loader (/sites, /tiles, /segments, /weekly, /reference, /alerts, /ops), plus /rasters
+(the library's NISAR tile sets, read from disk). Endpoint reference: docs/API.md."""
 
 import datetime as dt
 import json
@@ -8,10 +8,11 @@ import math
 import re
 
 from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from app import ops
+from app import ops, rasters
 from app.db import engine
 
 VERSION = "0.1.0"
@@ -24,6 +25,7 @@ SHARE_LEVELS = (0.25, 0.5, 0.75)
 EPOCH = dt.date(1970, 1, 1)
 
 app = FastAPI(title="Zafra Radar API", version=VERSION)
+RASTER_CACHE = "public, max-age=86400"  # tiles change only when the library regenerates them
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"])
 
 
@@ -184,6 +186,33 @@ async def tile_response(conn, sql: str, simplified_sql: str, params: dict) -> Re
     return Response(content=bytes(data), media_type="application/vnd.mapbox-vector-tile",
                     headers={"Cache-Control": "public, max-age=3600"})
 
+
+
+def raster_index(site: str) -> dict:
+    index = rasters.read_index(rasters.tiles_root(), site)
+    if index is None:
+        raise HTTPException(404, f"no raster tiles for site: {site}")
+    return index
+
+
+@app.get("/rasters/{site}")
+async def raster_layers(site: str) -> dict:
+    """The site's NISAR raster layers from the library's tiles_index.json (docs/API.md)."""
+    return rasters.normalise(raster_index(site), site)
+
+
+@app.get("/rasters/{site}/{layer}/{z}/{x}/{y}.png")
+async def raster_tile(site: str, layer: str, z: str, x: str, y: str) -> Response:
+    """One PNG tile of a layer listed in the site's index; 204 when the tile does not exist."""
+    zi, xi, yi = tile_coords(z, x, y)
+    if layer not in {entry["id"] for entry in raster_index(site)["layers"]}:
+        raise HTTPException(404, f"unknown raster layer for {site}: {layer}")
+    path = rasters.tile_path(rasters.tiles_root(), site, layer, zi, xi, yi)
+    if path is None:
+        raise HTTPException(400, "invalid raster tile path")
+    if not path.is_file():
+        return Response(status_code=204)
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": RASTER_CACHE})
 
 SEGMENT_SQL = """
 SELECT segment_id, area_ha, p_cane, p_cane_radar, p_cane_optical, harvest_date,
