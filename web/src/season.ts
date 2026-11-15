@@ -7,14 +7,18 @@ const DAY_MS = 86_400_000;
 
 // The harvest map has two states: standing cane dark green, harvested amber. They differ in
 // lightness (CIELAB L* 41 against 77) as well as hue, so they stay apart with protanopia,
-// deuteranopia and tritanopia (simulated CIEDE2000 difference 26 or more as drawn; see
-// docs/DESIGN.md). Fields with no harvest date are a light neutral grey, lighter than the
-// dimmed basemap and the explorer's plain background.
+// deuteranopia and tritanopia (simulated CIEDE2000 difference 29 or more as drawn over the
+// dark basemap; see docs/DESIGN.md). Fields with no harvest date are subdued: a faint light
+// grey fill and a thin light outline, so they read as context rather than as gaps.
 export const STANDING_COLOR = "#1b6e35";
 export const HARVESTED_COLOR = "#ffb000";
-export const UNDATED_COLOR = "#d6d6d6";
+export const UNDATED_COLOR = "#c9ced6";
+export const UNDATED_OUTLINE = "#c9ced6";
 export const DATED_OPACITY = 0.9;
-export const UNDATED_OPACITY = 0.75;
+export const UNDATED_OPACITY = 0.18;
+// Fields harvested in the latest week while the timeline advances: a pale warm highlight
+// (L* 96, 21 or more above the amber in every simulation) that fades into the harvested colour.
+export const HIGHLIGHT_COLOR = "#fff4cc";
 // "Colour by harvest date" (More options): plasma (perceptually uniform, colour-blind safe),
 // early = dark blue, late = yellow, in place of the single harvested colour.
 export const RAMP = ["#0d0887", "#7e03a8", "#cc4778", "#f89540", "#f0f921"];
@@ -64,6 +68,11 @@ export type WeekCount = { week_start: string; harvests: number };
 /** Detected harvests summed over the Monday weeks that start on or before `day`. */
 export function cumulativeHarvests(weeks: WeekCount[], day: number): number {
   return weeks.reduce((n, w) => (toDay(w.week_start) <= day ? n + w.harvests : n), 0);
+}
+
+/** Detected harvests in the Monday week that ends on Sunday `day`. */
+export function weekHarvests(weeks: WeekCount[], day: number): number {
+  return weeks.find((w) => toDay(w.week_start) === day - 6)?.harvests ?? 0;
 }
 
 /** Ramp stops spread evenly over the season [minDay, maxDay]. */

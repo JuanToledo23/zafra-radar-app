@@ -13,7 +13,9 @@ import {
   STANDING_COLOR,
   UNDATED_COLOR,
   UNDATED_OPACITY,
+  UNDATED_OUTLINE,
 } from "./season";
+import { EXPLORER_BACKGROUND } from "./basemap";
 import { Disclosure, InfoTip, Segmented } from "./ui";
 
 type Props = {
@@ -83,6 +85,17 @@ function Swatch({ color, opacity, border }: { color: string; opacity?: number; b
   return <span className={`swatch${border ? " swatch-border" : ""}`} style={{ background: color, opacity }} />;
 }
 
+/** "No harvest date" as the map draws it: a faint fill and a thin light outline, here on
+ * the map's dark backdrop so the swatch reads the same on the white panel. */
+function UndatedSwatch() {
+  return (
+    <svg className="swatch" viewBox="0 0 16 16" aria-hidden="true">
+      <rect width={16} height={16} rx={3} fill={EXPLORER_BACKGROUND} />
+      <rect x={3} y={3} width={10} height={10} fill={UNDATED_COLOR} fillOpacity={UNDATED_OPACITY} stroke={UNDATED_OUTLINE} strokeOpacity={0.5} />
+    </svg>
+  );
+}
+
 /** At most three plain entries describing what the current view draws. */
 function Legend({ lang, site, view, byDate, rasters, radarView }: {
   lang: Lang;
@@ -114,7 +127,7 @@ function Legend({ lang, site, view, byDate, rasters, radarView }: {
           <Swatch color={STANDING_COLOR} /> {t(lang, "legStanding")}
         </div>
         <div className="legend-item">
-          <Swatch color={UNDATED_COLOR} opacity={UNDATED_OPACITY} border /> {t(lang, "legUndated")}
+          <UndatedSwatch /> {t(lang, "legUndated")}
         </div>
       </div>
     );

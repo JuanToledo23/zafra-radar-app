@@ -12,14 +12,49 @@ type Props = {
   onTogglePlay: () => void;
   harvests: number | null;
   hectares: number | null;
+  share: number | null; // harvested area over the site's mapped cane area, 0..1
+  weekCounts: number[] | null; // fields harvested in the week each step closes
+
   seasonOpen: boolean;
   onToggleSeason: () => void;
 };
 
+const BAR = 0.64; // bar width, as a share of the step spacing
+
+/** The season's weekly harvest counts as bars along the slider track, one per step and
+ * centred on its thumb position; the weeks up to the slider's are emphasised. */
+function WeekBars({ counts, index }: { counts: number[]; index: number }) {
+  const lang = useLang();
+  const max = Math.max(...counts, 1);
+  const last = Math.max(counts.length - 1, 1);
+  return (
+    <div className="timeline-bars" data-testid="timeline-bars" role="img" aria-label={t(lang, "weeklyBars")}>
+      <svg viewBox={`0 0 ${last} 1`} preserveAspectRatio="none" aria-hidden="true">
+        {counts.map((n, i) => {
+          const h = n ? Math.max(n / max, 0.06) : 0;
+          return (
+            <rect
+              key={i}
+              className={i < index ? "played" : i === index ? "current" : undefined}
+              x={i - BAR / 2}
+              y={1 - h}
+              width={BAR}
+              height={h}
+            />
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 // Weekly slider (Sundays) over the site's harvest dates; the map repaints from the selected day.
 // Docked under the map as the timeline bar, with the season progress drawer's button. Each
-// step is shown as the Monday–Sunday week it closes ("Week of" its Monday).
-export default function TimeSlider({ steps, index, onIndex, playing, onTogglePlay, harvests, hectares, seasonOpen, onToggleSeason }: Props) {
+// step is shown as the Monday–Sunday week it closes ("Week of" its Monday); the season's
+// weekly harvests are drawn along the track.
+export default function TimeSlider({
+  steps, index, onIndex, playing, onTogglePlay, harvests, hectares, share, weekCounts, seasonOpen, onToggleSeason,
+}: Props) {
   const lang = useLang();
   const day = steps[index];
   const date = (d: number) => formatDate(lang, fromDay(d));
@@ -46,6 +81,7 @@ export default function TimeSlider({ steps, index, onIndex, playing, onTogglePla
         <span className="timeline-label">{t(lang, "weekOf")}</span> <strong>{date(day - 6)}</strong>
       </label>
       <div className="timeline-track">
+        {weekCounts && weekCounts.length === steps.length && <WeekBars counts={weekCounts} index={index} />}
         <input
           id="week"
           type="range"
@@ -68,12 +104,19 @@ export default function TimeSlider({ steps, index, onIndex, playing, onTogglePla
             <span className="timeline-label">…</span>
           ) : (
             <>
-              <strong>{formatNumber(lang, harvests)}</strong>
-              <span className="timeline-label"> {t(lang, harvests === 1 ? "harvestedSoFarOne" : "harvestedSoFarMany")}</span>
+              <span className="timeline-fields">
+                <strong>{formatNumber(lang, harvests)}</strong>
+                <span className="timeline-label"> {t(lang, harvests === 1 ? "harvestedSoFarOne" : "harvestedSoFarMany")}</span>
+              </span>
               {hectares !== null && (
                 <span className="timeline-ha" data-testid="harvest-ha">
-                  {" · "}
                   <strong>{formatNumber(lang, hectares)}</strong> ha
+                  {share !== null && (
+                    <span data-testid="harvest-share">
+                      {" · "}
+                      {t(lang, "shareOfCane", { pct: formatNumber(lang, 100 * share) })}
+                    </span>
+                  )}
                 </span>
               )}
             </>

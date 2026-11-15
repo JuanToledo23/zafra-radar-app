@@ -258,20 +258,27 @@ a { color: var(--accent); }
 .radar-meaning.muted { color: var(--text-3); }
 .radar-credit { font-size: 12px; color: var(--text-3); margin: 8px 0 0; }
 .radar-divider {
-  position: absolute; top: 0; bottom: 0; width: 16px; margin-left: -8px; z-index: 1;
+  position: absolute; top: 0; bottom: 0; width: 32px; margin-left: -16px; z-index: 1;
   cursor: ew-resize; touch-action: none; display: flex; justify-content: center;
 }
 .radar-divider::before { content: ""; width: 2px; height: 100%; background: #fff; box-shadow: 0 0 3px rgba(0, 0, 0, 0.6); }
-/* handle and date labels low on the divider, clear of the layers panel */
+/* drag handle in the middle of the divider; the whole 32 px strip is the hit area */
 .radar-handle {
-  position: absolute; top: 72%; width: 18px; height: 40px; margin-top: -20px; border-radius: 6px;
+  position: absolute; top: 50%; width: 40px; height: 40px; margin-top: -20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center; gap: 0; color: var(--text);
   background: #fff; border: 1px solid var(--border-strong); box-shadow: var(--shadow-2);
 }
+.radar-divider:hover .radar-handle, .radar-divider:active .radar-handle { border-color: var(--accent); color: var(--accent); }
+/* date labels near the top; MapView places them clear of the map's other overlays */
 .radar-side {
-  position: absolute; top: calc(72% - 12px); z-index: 1; pointer-events: none; font-size: 13px; font-weight: 600;
-  font-variant-numeric: tabular-nums; background: rgba(17, 24, 39, 0.85); color: #fff; padding: 3px 10px;
-  border-radius: var(--radius-sm); white-space: nowrap; margin: 0 14px;
+  position: absolute; top: 0; left: 0; z-index: 1; pointer-events: none; display: flex; align-items: center; gap: 4px;
+  font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; background: rgba(17, 24, 39, 0.88); color: #fff;
+  padding: 4px 10px; border-radius: var(--radius-sm); box-shadow: var(--shadow-1); min-width: min-content;
 }
+.radar-side-text { white-space: normal; line-height: 1.3; }
+.radar-side-text > span { display: inline-block; white-space: nowrap; }
+.radar-side-left { padding-left: 6px; }
+.radar-side-right { padding-right: 6px; }
 .radar-zoom-note {
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 2; font-size: 13px;
   background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); border-radius: 999px;
@@ -319,9 +326,17 @@ a { color: var(--accent); }
 .timeline-ends { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; margin-top: 4px; }
 .timeline-count { display: flex; align-items: center; gap: 6px; flex: none; line-height: 1.2; }
 .timeline-count strong { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
-.timeline-count [data-testid="harvest-count"] { max-width: 290px; }
-.timeline-ha { color: var(--text-2); white-space: nowrap; }
-.timeline-ha strong { font-size: 16px; }
+.timeline-count [data-testid="harvest-count"] { display: flex; flex-direction: column; gap: 2px; max-width: 290px; }
+.timeline-fields { white-space: nowrap; }
+.timeline-ha { color: var(--text-2); white-space: nowrap; font-size: 13px; font-variant-numeric: tabular-nums; }
+.timeline-ha strong { font-size: 14px; font-weight: 600; }
+/* weekly harvest bars along the slider track: centred on the thumb positions (10 px inset,
+   half the thumb), just above the track */
+.timeline-bars { height: 24px; margin: 0 10px -7px; position: relative; pointer-events: none; }
+.timeline-bars svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.timeline-bars rect { fill: #c9d0d9; transition: fill var(--ease); }
+.timeline-bars rect.played { fill: var(--accent); }
+.timeline-bars rect.current { fill: var(--accent-strong); }
 .season-btn { flex: none; }
 #week { -webkit-appearance: none; appearance: none; width: 100%; height: 22px; margin: 0; background: transparent; cursor: pointer; }
 #week::-webkit-slider-runnable-track {
@@ -396,11 +411,28 @@ a { color: var(--accent); }
 .summary-bar { display: flex; align-items: center; gap: 8px; }
 .summary-text { font-size: 14px; line-height: 1.55; white-space: pre-line; margin: 8px 0 0; }
 .site-facts .panel-title { font-size: 16px; text-transform: none; letter-spacing: 0; color: var(--text); margin-bottom: 2px; }
-.site-facts-name { margin: 0 0 16px; }
-.facts { display: flex; flex-direction: column; gap: 14px; }
-.fact-value { font-size: 32px; font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.fact-label { font-size: 14px; color: var(--text-2); }
-.invite { display: flex; gap: 8px; align-items: flex-start; margin: 20px 0 0; padding: 12px; background: var(--accent-soft); color: var(--accent-strong); border-radius: var(--radius); font-size: 14px; line-height: 1.45; }
+.site-facts-name { margin: 0 0 14px; display: flex; align-items: center; gap: 6px; }
+/* "Season so far": the block that follows the timeline */
+.season-so-far { padding: 12px 14px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.ssf-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ssf-title { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; margin: 0; }
+.ssf-week { font-size: 13px; color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ssf-share { display: flex; align-items: baseline; gap: 8px; margin-top: 8px; }
+.ssf-pct { font-size: 32px; font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; min-width: 3.4ch; }
+.ssf-share-label { font-size: 13px; color: var(--text-2); line-height: 1.3; }
+.ssf-bar { height: 8px; margin-top: 8px; border-radius: 999px; background: #dfe3e8; overflow: hidden; }
+.ssf-bar span { display: block; height: 100%; background: var(--accent); transform-origin: left; }
+.ssf-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.ssf-value { font-size: 20px; font-weight: 650; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.ssf-label { font-size: 13px; color: var(--text-2); }
+.ssf-week-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.ssf-week-row strong { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* the site's three facts, compact under the season block */
+.facts { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
+.fact { display: flex; align-items: baseline; gap: 10px; }
+.fact-value { font-size: 16px; font-weight: 650; line-height: 1.3; font-variant-numeric: tabular-nums; min-width: 6ch; text-align: right; }
+.fact-label { font-size: 14px; color: var(--text-2); line-height: 1.3; }
+.invite { display: flex; gap: 8px; align-items: flex-start; margin: 16px 0 0; padding: 12px; background: var(--accent-soft); color: var(--accent-strong); border-radius: var(--radius); font-size: 14px; line-height: 1.45; }
 .invite svg { flex: none; margin-top: 2px; }
 .site-note { margin: 24px 0 0; padding-top: 12px; border-top: 1px solid var(--border); }
 .key-line { font-size: 14px; margin: 2px 0 6px; }
@@ -470,7 +502,7 @@ a { color: var(--accent); }
   padding: 8px 16px; background: var(--surface); border-bottom: 1px solid var(--border);
 }
 .ops-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 380px; }
-.ops-site { font-size: 13px; color: var(--text-2); }
+.ops-site { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
 .ops-heading { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ops-heading strong { font-size: 18px; font-weight: 650; }
 .ops-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

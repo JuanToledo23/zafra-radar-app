@@ -2,14 +2,26 @@ import type { Selection, Site } from "./App";
 import AlertsList from "./AlertsList";
 import type { AlertRow } from "./alerts";
 import FieldDetail, { type SegmentDetail } from "./FieldDetail";
-import { formatNumber, siteName, t, tValue, useLang } from "./i18n";
+import { formatDate, formatNumber, siteName, siteSubtitle, t, tValue, useLang } from "./i18n";
 import { Icon } from "./icons";
 import ReferenceDetail from "./ReferenceDetail";
 import type { ReferenceCollection } from "./reference";
 import { seasonLabel } from "./ops";
+import { fromDay } from "./season";
+import { InfoTip, useTweened } from "./ui";
+
+/** The season up to the timeline's week, for the panel with nothing selected. */
+export type SeasonSoFar = {
+  day: number; // the slider's Sunday
+  fields: number | null; // fields harvested so far
+  hectares: number | null; // their area
+  weekFields: number | null; // fields harvested in the slider's week
+  weekHectares: number | null;
+};
 
 type Props = {
   site: Site | null;
+  season: SeasonSoFar | null;
   selected: Selection;
   reference: ReferenceCollection | null;
   referenceOn: boolean;
@@ -21,17 +33,83 @@ type Props = {
   onOpenAlert: (a: AlertRow) => void;
 };
 
-/** Nothing selected: the site in three numbers and one line on what to do next. */
-function SiteFacts({ site, referenceOn }: { site: Site; referenceOn: boolean }) {
+/** "Season so far": the harvested share of the mapped cane as a progress figure, fields and
+ * hectares harvested up to the timeline's week, and that week's harvest. The figures ease
+ * to each new value as the timeline moves. */
+function SeasonBlock({ site, season }: { site: Site; season: SeasonSoFar }) {
+  const lang = useLang();
+  const share = season.hectares === null || !site.cane_area_ha ? null : season.hectares / site.cane_area_ha;
+  const pct = useTweened(share === null ? null : 100 * share);
+  const fields = useTweened(season.fields);
+  const hectares = useTweened(season.hectares);
+  const n = (v: number | null) => (v === null ? "…" : formatNumber(lang, v));
+  const ha = season.weekHectares === null ? "…" : formatNumber(lang, season.weekHectares);
+  return (
+    <section className="season-so-far" data-testid="season-so-far" aria-label={t(lang, "seasonSoFar")}>
+      <div className="ssf-head">
+        <h3 className="ssf-title">
+          {t(lang, "seasonSoFar")}
+          <InfoTip text={t(lang, "tipSeasonSoFar")} />
+        </h3>
+        <span className="ssf-week" data-testid="ssf-week">
+          {t(lang, "weekOf")} {formatDate(lang, fromDay(season.day - 6))}
+        </span>
+      </div>
+      <div className="ssf-share">
+        <span className="ssf-pct" data-testid="ssf-pct">
+          {pct === null ? "…" : `${formatNumber(lang, pct)} %`}
+        </span>
+        <span className="ssf-share-label">{t(lang, "shareHarvested")}</span>
+      </div>
+      <div
+        className="ssf-bar"
+        role="progressbar"
+        aria-label={t(lang, "shareHarvested")}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={share === null ? undefined : Math.round(100 * share)}
+      >
+        <span style={{ transform: `scaleX(${pct === null ? 0 : Math.min(pct / 100, 1)})` }} />
+      </div>
+      <div className="ssf-stats">
+        <div>
+          <div className="ssf-value" data-testid="ssf-fields">{n(fields)}</div>
+          <div className="ssf-label">{t(lang, "fieldsHarvested")}</div>
+        </div>
+        <div>
+          <div className="ssf-value" data-testid="ssf-ha">{n(hectares)}</div>
+          <div className="ssf-label">{t(lang, "haHarvested")}</div>
+        </div>
+      </div>
+      <div className="ssf-week-row" data-testid="ssf-this-week">
+        <span className="ssf-label">{t(lang, "thisWeek")}</span>
+        <strong>
+          {season.weekFields === null
+            ? "…"
+            : t(lang, season.weekFields === 1 ? "weekFieldsOne" : "weekFields", { n: formatNumber(lang, season.weekFields), ha })}
+        </strong>
+      </div>
+    </section>
+  );
+}
+
+/** Nothing selected: the season so far, the site in three numbers and one line on what to do
+ * next. */
+function SiteFacts({ site, season, referenceOn }: { site: Site; season: SeasonSoFar | null; referenceOn: boolean }) {
   const lang = useLang();
   const n = (v: number) => formatNumber(lang, v);
   const pct = site.segment_count ? Math.round((100 * site.dated_segment_count) / site.segment_count) : 0;
+  const sub = siteSubtitle(lang, site);
   return (
     <div className="site-facts" data-testid="panel-empty">
       <h2 className="panel-title">
         {tValue(lang, `short_${site.site_id}`, site.name)} <span className="muted">· {seasonLabel(site.season)}</span>
       </h2>
-      <p className="muted small site-facts-name">{siteName(lang, site)}</p>
+      <p className="muted small site-facts-name" data-testid="site-subtitle">
+        {sub.name}
+        {sub.tip && <InfoTip text={sub.tip} />}
+      </p>
+      {season && <SeasonBlock site={site} season={season} />}
       <div className="facts">
         <div className="fact">
           <div className="fact-value">{n(site.cane_area_ha)}</div>
@@ -54,7 +132,7 @@ function SiteFacts({ site, referenceOn }: { site: Site; referenceOn: boolean }) 
 }
 
 export default function SidePanel({
-  site, selected, reference, referenceOn, onZoom, onSelect, alertsOpen, alertCode, onAlertCode, onOpenAlert,
+  site, season, selected, reference, referenceOn, onZoom, onSelect, alertsOpen, alertCode, onAlertCode, onOpenAlert,
 }: Props) {
   const lang = useLang();
   const field =
@@ -101,7 +179,7 @@ export default function SidePanel({
             onOpenSegment={(id) => onSelect({ kind: "segment", id, from: field.field_id })}
           />
         )}
-        {!shown && site && <SiteFacts site={site} referenceOn={referenceOn} />}
+        {!shown && site && <SiteFacts site={site} season={season} referenceOn={referenceOn} />}
       </section>
       {site && shown && (
         <p className="muted small site-note">

@@ -90,6 +90,9 @@ const EN = {
   // site names by site_id (siteName); a site without one shows its config name
   site_morelos: "Ingenio Emiliano Zapata supply area, Morelos, Mexico (training site)",
   site_brazil: "Ribeirão Preto, São Paulo, Brazil (Jardinópolis / Sales Oliveira; transfer test, no retraining)",
+  // a site's role, left out of the visible subtitles (siteSubtitle) and given in its tooltip
+  role_morelos: "training site",
+  roleTip_morelos: "Training site: the harvest detection was trained on this area.",
   // weekly report (WeeklyReport.tsx)
   weeklyReport: "Weekly report",
   print: "Print / Save as PDF",
@@ -226,7 +229,9 @@ const EN = {
   harvestedSoFarOne: "field harvested so far",
   harvestedSoFarMany: "fields harvested so far",
   tipHarvestCount:
-    "Field segments with a radar harvest date on or before the end of this week, and their area in hectares.",
+    "Field segments with a radar harvest date on or before the end of this week, their area in hectares and that area's share of all the cane mapped at the site.",
+  shareOfCane: "{pct} % of cane",
+  weeklyBars: "Fields harvested each week",
   seasonProgress: "Season progress",
   // side panel
   details: "Details",
@@ -237,6 +242,15 @@ const EN = {
   factCane: "hectares of sugarcane mapped",
   factFields: "cane fields watched by the radar",
   factDated: "fields with a harvest date ({pct} %)",
+  seasonSoFar: "Season so far",
+  tipSeasonSoFar:
+    "Harvests the radar detected up to the end of the week on the timeline. The share is the harvested area over all the hectares of cane mapped at the site.",
+  shareHarvested: "of the mapped cane area harvested",
+  fieldsHarvested: "fields harvested",
+  haHarvested: "hectares harvested",
+  thisWeek: "This week",
+  weekFields: "{n} fields · {ha} ha",
+  weekFieldsOne: "1 field · {ha} ha",
   invite: "Press play under the map to watch the harvest, or click a field.",
   inviteRef: "Press play under the map to watch the harvest, or click a field or a reference outline.",
   siteNote: "{site}. {n} cane segments, {d} with a harvest date.",
@@ -513,6 +527,8 @@ const ES: Record<Key, string> = {
   mapNotDetected: "Aún sin corte detectado",
   mapFire: "Detección de fuego, últimos 7 días (sin atribuir)",
   site_morelos: "Zona de abastecimiento del Ingenio Emiliano Zapata, Morelos, México (sitio de entrenamiento)",
+  role_morelos: "sitio de entrenamiento",
+  roleTip_morelos: "Sitio de entrenamiento: la detección del corte se entrenó en esta zona.",
   site_brazil: "Ribeirão Preto, São Paulo, Brasil (Jardinópolis / Sales Oliveira; prueba de transferencia, sin reentrenar)",
   weeklyReport: "Reporte semanal",
   print: "Imprimir / Guardar como PDF",
@@ -645,7 +661,9 @@ const ES: Record<Key, string> = {
   harvestedSoFarOne: "parcela cortada a la fecha",
   harvestedSoFarMany: "parcelas cortadas a la fecha",
   tipHarvestCount:
-    "Segmentos de parcela con fecha de corte por radar hasta el final de esta semana, y su superficie en hectáreas.",
+    "Segmentos de parcela con fecha de corte por radar hasta el final de esta semana, su superficie en hectáreas y la parte que representa de toda la caña mapeada en el sitio.",
+  shareOfCane: "{pct} % de la caña",
+  weeklyBars: "Parcelas cortadas cada semana",
   seasonProgress: "Avance de la zafra",
   details: "Detalles",
   fieldTitle: "Parcela",
@@ -655,6 +673,15 @@ const ES: Record<Key, string> = {
   factCane: "hectáreas de caña mapeadas",
   factFields: "parcelas de caña vigiladas por el radar",
   factDated: "parcelas con fecha de corte ({pct} %)",
+  seasonSoFar: "Temporada a la fecha",
+  tipSeasonSoFar:
+    "Cortes que el radar detectó hasta el final de la semana de la línea de tiempo. La proporción es la superficie cortada sobre todas las hectáreas de caña mapeadas en el sitio.",
+  shareHarvested: "del área de caña mapeada ya cortada",
+  fieldsHarvested: "parcelas cortadas",
+  haHarvested: "hectáreas cortadas",
+  thisWeek: "Esta semana",
+  weekFields: "{n} parcelas · {ha} ha",
+  weekFieldsOne: "1 parcela · {ha} ha",
   invite: "Presiona reproducir bajo el mapa para ver avanzar el corte, o haz clic en una parcela.",
   inviteRef: "Presiona reproducir bajo el mapa para ver avanzar el corte, o haz clic en una parcela o en un contorno de referencia.",
   siteNote: "{site}. {n} segmentos de caña, {d} con fecha de corte.",
@@ -865,6 +892,14 @@ export function tValue(lang: Lang, key: string, fallback: string): string {
 /** The site's name in `lang` (`site_<id>` in the dictionary), else the name in its config. */
 export function siteName(lang: Lang, site: { site_id: string; name: string }): string {
   return tValue(lang, `site_${site.site_id}`, site.name);
+}
+
+/** The site's name without its role in parentheses (the visible subtitles), and the role's
+ * one-sentence tooltip, if the site has one. */
+export function siteSubtitle(lang: Lang, site: { site_id: string; name: string }): { name: string; tip: string | null } {
+  const role = tValue(lang, `role_${site.site_id}`, "");
+  const name = siteName(lang, site);
+  return { name: role ? name.replace(` (${role})`, "") : name, tip: tValue(lang, `roleTip_${site.site_id}`, "") || null };
 }
 
 /** `n` formatted, then the singular or plural word: "1 field", "2 fields". */

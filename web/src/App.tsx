@@ -7,7 +7,7 @@ import LayersPanel from "./LayersPanel";
 import MapView from "./MapView";
 import OpsView from "./OpsView";
 import SeasonPanel, { type Weekly } from "./SeasonPanel";
-import SidePanel from "./SidePanel";
+import SidePanel, { type SeasonSoFar } from "./SidePanel";
 import TimeSlider from "./TimeSlider";
 import type { BasemapState } from "./basemap";
 import { LANGS, LangContext, t, tValue, type Key, type Lang } from "./i18n";
@@ -24,8 +24,8 @@ import {
   type RasterIndex,
 } from "./radar";
 import type { ReferenceCollection } from "./reference";
-import { cumulativeHarvests, stepIndex, toDay, weekSteps } from "./season";
-import { Segmented } from "./ui";
+import { cumulativeHarvests, stepIndex, toDay, weekHarvests, weekSteps } from "./season";
+import { Segmented, reducedMotion } from "./ui";
 
 // Subset of GET /sites used by the map and the season panel (docs/API.md).
 export type Site = {
@@ -57,6 +57,33 @@ const DEFAULT_SITE = "morelos";
 const PLAY_STEP_MS = 600;
 const ALERT_ZOOM_DEG = 0.002; // half-size of the box flown to around an alert's segment centroid
 
+// Presenter mode (`?present=1`): the single flag for it. For now it only keeps the first
+// visit's autoplay off.
+export const PRESENTER = new URLSearchParams(window.location.search).get("present") === "1";
+
+// First visit: the season plays once from the beginning when the map is ready, and stops at
+// the end or on any interaction. Remembered in localStorage (which may be unavailable: then
+// it plays again on the next visit, as the guide shows again). Not in presenter mode, not
+// with reduced motion.
+const AUTOPLAY_KEY = "zafra.autoplay.seen";
+type Autoplay = "pending" | "running" | "off";
+
+function firstVisit(): boolean {
+  try {
+    return localStorage.getItem(AUTOPLAY_KEY) !== "1";
+  } catch {
+    return true;
+  }
+}
+
+function rememberVisit() {
+  try {
+    localStorage.setItem(AUTOPLAY_KEY, "1");
+  } catch {
+    // storage blocked: nothing to remember
+  }
+}
+
 export default function App() {
   const [selected, setSelected] = useState<Selection>(null);
   const [reference, setReference] = useState<ReferenceCollection | null>(null);
@@ -86,6 +113,7 @@ export default function App() {
   const [rasters, setRasters] = useState<RasterIndex | null>(null);
   const [radar, setRadar] = useState<RadarSettings>(DEFAULT_RADAR);
   const [guideOpen, setGuideOpen] = useState(() => !guideDismissed());
+  const [autoplay, setAutoplay] = useState<Autoplay>(() => (!PRESENTER && firstVisit() && !reducedMotion() ? "pending" : "off"));
 
   useEffect(() => {
     fetch("/api/health")
@@ -183,6 +211,19 @@ export default function App() {
   const mapView = viewOf(radar);
   const hectares =
     areaWeeks && day !== null ? areaWeeks.reduce((n, w) => (toDay(w.start) <= day ? n + w.area_ha : n), 0) : null;
+  // The season up to the slider's week (timeline and side panel), and the weekly counts the
+  // timeline draws along its track.
+  const season: SeasonSoFar | null =
+    day === null
+      ? null
+      : {
+          day,
+          fields: weekly ? cumulativeHarvests(weekly.weeks, day) : null,
+          hectares,
+          weekFields: weekly ? weekHarvests(weekly.weeks, day) : null,
+          weekHectares: areaWeeks ? (areaWeeks.find((w) => toDay(w.start) === day - 6)?.area_ha ?? 0) : null,
+        };
+  const weekCounts = useMemo(() => (weekly ? steps.map((d) => weekHarvests(weekly.weeks, d)) : null), [weekly, steps]);
   // Before / after: the season's first and last image are named as such; other pairs (More
   // options) by their dates, and a change layer as such.
   const seasonCompare = isSeasonCompare(rasters, radar);
@@ -195,6 +236,29 @@ export default function App() {
           side(radarView.right, seasonCompare ? "sideAfter" : "sideLater"),
         ]
       : null;
+
+  // Any pointer, key or wheel input cancels the first-visit autoplay, before or while it
+  // runs. On the play button it only ends the autoplay state: the click then pauses as usual.
+  useEffect(() => {
+    if (autoplay === "off") return;
+    const stop = (e: Event) => {
+      setAutoplay("off");
+      if (!(e.target instanceof Element && e.target.closest("[data-testid=play]"))) setPlaying(false);
+    };
+    const events = ["pointerdown", "keydown", "wheel"];
+    events.forEach((ev) => window.addEventListener(ev, stop, { capture: true }));
+    return () => events.forEach((ev) => window.removeEventListener(ev, stop, { capture: true }));
+  }, [autoplay]);
+  useEffect(() => {
+    if (autoplay === "running" && !playing) setAutoplay("off"); // reached the end, or stopped
+  }, [autoplay, playing]);
+  const startAutoplay = (id: string) => {
+    if (autoplay !== "pending" || id !== siteId || view !== "explorer" || !steps.length) return;
+    rememberVisit();
+    setAsOf(steps[0]);
+    setPlaying(true);
+    setAutoplay("running");
+  };
 
   useEffect(() => {
     if (!playing) return;
@@ -224,6 +288,7 @@ export default function App() {
   };
   const switchView = (v: View) => {
     setPlaying(false);
+    setAutoplay("off");
     setView(v);
   };
 
@@ -336,6 +401,7 @@ export default function App() {
                 compare={radar.mode === "compare"}
                 byDate={byDate}
                 sideLabels={sideLabels}
+                onReady={startAutoplay}
               />
               <LayersPanel
                 site={site}
@@ -374,8 +440,10 @@ export default function App() {
                 }}
                 playing={playing}
                 onTogglePlay={togglePlay}
-                harvests={weekly ? cumulativeHarvests(weekly.weeks, day) : null}
+                harvests={season?.fields ?? null}
                 hectares={hectares}
+                share={hectares !== null && site?.cane_area_ha ? hectares / site.cane_area_ha : null}
+                weekCounts={weekCounts}
                 seasonOpen={seasonOpen}
                 onToggleSeason={() => setSeasonOpen(!seasonOpen)}
               />
@@ -394,6 +462,7 @@ export default function App() {
           </div>
           <SidePanel
             site={site}
+            season={season}
             selected={selected}
             reference={reference}
             referenceOn={referenceOn}

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Site } from "./App";
-import { count, formatDate, formatNumber, siteName, t, tValue, type Key, type Lang } from "./i18n";
+import { count, formatDate, formatNumber, siteSubtitle, t, tValue, type Key, type Lang } from "./i18n";
 import { Icon } from "./icons";
 import OpsMap, { type OpsFocus } from "./OpsMap";
 import {
@@ -107,6 +107,7 @@ export default function OpsView({ site, day, onDay, lang }: Props) {
   const ha = (v: number) => `${n(v)} ha`;
   const date = (v: string) => formatDate(lang, v);
   const fields = (v: number) => count(lang, v, "field", "fields");
+  const sub = siteSubtitle(lang, site);
   const pct = (v: number | null) => `${n((v ?? 0) * 100, 1)} %`;
   const seasonMin = b?.season.start;
   const seasonMax = b ? fromDay(toDay(b.season.end_exclusive) - 1) : undefined;
@@ -132,7 +133,10 @@ export default function OpsView({ site, day, onDay, lang }: Props) {
     <div className="ops" data-testid="ops" lang={lang}>
       <div className="ops-toolbar">
         <div className="ops-title">
-          <span className="ops-site" data-testid="ops-site">{siteName(lang, site)}</span>
+          <span className="ops-site" data-testid="ops-site">
+            {sub.name}
+            {sub.tip && <InfoTip text={sub.tip} />}
+          </span>
           <span className="ops-heading">
             <strong data-testid="ops-replay">
               {t(lang, "replay", { season: seasonLabel(site.season), date: date(iso) })}

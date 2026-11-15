@@ -3,7 +3,37 @@ import { t, useLang } from "./i18n";
 import { Icon, type IconName } from "./icons";
 
 // Small shared interface pieces (docs/DESIGN.md): the "?" tooltip, segmented control,
-// disclosure, loading skeleton and empty state.
+// disclosure, loading skeleton and empty state, and the smoothly changing number.
+
+export const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** `value`, eased towards each new value over `ms` (cubic ease-out) so a figure counts up or
+ * down instead of jumping; a change mid-way continues from the figure shown. At once with
+ * reduced motion, or from or to null. */
+export function useTweened(value: number | null, ms = 350): number | null {
+  const [shown, setShown] = useState(value);
+  const current = useRef(value);
+  useEffect(() => {
+    const from = current.current;
+    if (value === null || from === null || from === value || reducedMotion()) {
+      current.current = value;
+      setShown(value);
+      return;
+    }
+    let raf = 0;
+    let start = 0;
+    const step = (now: number) => {
+      start ||= now;
+      const p = Math.min((now - start) / ms, 1);
+      current.current = from + (value - from) * (1 - (1 - p) ** 3);
+      setShown(current.current);
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value, ms]);
+  return shown;
+}
 
 const TIP_W = 280;
 const TIP_GAP = 8;
