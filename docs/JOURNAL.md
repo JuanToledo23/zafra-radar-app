@@ -143,3 +143,20 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
 - Headless Chrome, both sites: harvested fields turn dark between the first and last date
   and line up with the outlines. The library's overview tiles (z10-13) lack the easternmost
   column, a 2-12 km blank strip on the east edge (DATA.md); tile sets 646 MB, 12,650 files.
+
+## 2026-11-14 22:10 CST
+
+- Radar imagery, east edge: new `tools/build_overview_tiles.py` builds the zoom 10-13 tiles
+  missing from the library's sets from their children (mosaic, 2 × 2 mean ignoring nodata,
+  same palette) into `data/derived/tiles/` (git-ignored). Morelos 384 tiles, Brazil 456; the
+  gap was also a south row at z10 (Brazil z10-11), now none at any zoom. The library is
+  unchanged.
+- `/rasters/{site}/{layer}/{z}/{x}/{y}.png` serves the library's tile, else the derived one
+  (`X-Tile-Source`); `/rasters/{site}` gains `derived_tiles`. `deploy.sh --with-rasters`
+  also copies the derived tiles; the plain derived rsync now leaves them out.
+- Headless Chrome, both sites, map zoom 9.5-12.5, library-only vs with derived tiles: the
+  imagery now reaches the east edge at every zoom; no visible seam or shift in tone.
+- Explorer: a new radar date stays hidden under the previous image until its tiles in view
+  have loaded, then replaces it. Morelos, HV, "Follow time slider", whole season played,
+  every render frame read back: 0 blank frames in 3 runs (the previous code: 40 of 278).
+

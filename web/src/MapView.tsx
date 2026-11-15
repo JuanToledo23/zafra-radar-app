@@ -10,7 +10,7 @@ import {
   type BasemapState,
 } from "./basemap";
 import { ALERT_OUTLINE_COLOR } from "./alerts";
-import { layerDates, type RadarView } from "./radar";
+import { layerDates, type RasterLayer, type RadarView } from "./radar";
 import type { ReferenceCollection } from "./reference";
 import {
   DATED_OPACITY,
@@ -62,11 +62,10 @@ export const tilesUrl = (site: string) => `${window.location.origin}/api/tiles/$
 // custom layer sets just before it; the last custom layer switches the scissor off again, so
 // every layer above (segments, reference fields) is drawn whole. MapLibre itself uses the
 // scissor only for its debug drawing.
-const RADAR = ["radar-left", "radar-right"] as const;
+const RADAR = ["radar-left", "radar-right"] as const; // prefixes of the per-layer source ids
 const CLIP_LEFT = "radar-clip-left";
 const CLIP_RIGHT = "radar-clip-right";
 const CLIP_OFF = "radar-clip-off";
-const RADAR_LAYERS = [CLIP_LEFT, RADAR[0], CLIP_RIGHT, RADAR[1], CLIP_OFF];
 const rasterUrl = (path: string) => `${window.location.origin}/api${path}`;
 const hovered = (yes: unknown, no: unknown) => ["case", ["boolean", ["feature-state", "hover"], false], yes, no];
 
@@ -212,6 +211,10 @@ export default function MapView({
   // Divider position, 0..1 of the map width: state for the DOM handle, ref for the GL clip.
   const [split, setSplit] = useState(0.5);
   const splitRef = useRef(0.5);
+  // Radar layers on the map (layer id = source id) per side: shown, and pending until loaded.
+  const radarShown = useRef<(string | null)[]>([null, null]); // map layer (= source) id per side
+  const radarPending = useRef<(string | null)[]>([null, null]);
+  const radarKey = useRef("");
   const radarOn = !!(radar?.left || radar?.right);
 
   useEffect(() => {
@@ -280,6 +283,9 @@ export default function MapView({
 
     return () => {
       mapRef.current = null;
+      radarKey.current = "";
+      radarShown.current = [null, null];
+      radarPending.current = [null, null];
       map.remove();
     };
   }, [onSelect, onBasemap]);
@@ -319,24 +325,23 @@ export default function MapView({
     map.setLayoutProperty(LINE, "visibility", radarOn && !radarOutlines ? "none" : "visible");
   }, [loaded, site, day, radarOn, radarOutlines]);
 
-  // Radar sources: replaced when a layer changes (a new date, product or site); below the
-  // segment layers. Clip layers only in compare mode.
+  // Radar sources, below the segment layers; clip layers only in compare mode. A new site,
+  // compare mode, or a side appearing or disappearing rebuilds them. A side whose layer
+  // changes (a new date or product, e.g. while playing with "Follow time slider") keeps the
+  // previous image on screen: the new layer is added just below it and replaces it once its
+  // tiles in view have loaded (or the map is idle), so no blank frame shows in between.
   const leftId = radar?.left?.id ?? null;
   const rightId = radar?.right?.id ?? null;
   useEffect(() => {
     const map = mapRef.current;
     if (!loaded || !map || !site) return;
-    const remove = () => {
-      RADAR_LAYERS.forEach((id) => map.getLayer(id) && map.removeLayer(id));
-      RADAR.forEach((id) => map.getSource(id) && map.removeSource(id));
+    const drop = (id: string | null) => {
+      if (id && map.getLayer(id)) map.removeLayer(id);
+      if (id && map.getSource(id)) map.removeSource(id);
     };
-    remove();
-    const before = map.getLayer(FILL) ? FILL : undefined;
-    const layers = [radar?.left ?? null, compare ? (radar?.right ?? null) : null];
-    layers.forEach((layer, i) => {
-      if (!layer) return;
-      if (compare) map.addLayer(clipLayer(i ? CLIP_RIGHT : CLIP_LEFT, i ? "right" : "left", () => splitRef.current), before);
-      map.addSource(RADAR[i], {
+    const add = (i: number, layer: RasterLayer, beforeId: string | undefined) => {
+      const id = `${RADAR[i]}:${layer.id}`;
+      map.addSource(id, {
         type: "raster",
         tiles: [rasterUrl(layer.tile_url)],
         tileSize: 256,
@@ -346,17 +351,71 @@ export default function MapView({
         attribution: radarAttribution ?? undefined,
       });
       map.addLayer(
-        { id: RADAR[i], type: "raster", source: RADAR[i], paint: { "raster-opacity": radarOpacity, "raster-fade-duration": 0 } },
-        before,
+        { id, type: "raster", source: id, paint: { "raster-opacity": radarOpacity, "raster-fade-duration": 0 } },
+        beforeId,
       );
+      return id;
+    };
+    const layers = [radar?.left ?? null, compare ? (radar?.right ?? null) : null];
+    const key = `${site.site_id}|${compare}|${radarAttribution}|${layers.map(Boolean).join()}`;
+    const shown = radarShown.current;
+    const pending = radarPending.current;
+    if (key === radarKey.current) {
+      layers.forEach((layer, i) => {
+        const want = layer && `${RADAR[i]}:${layer.id}`;
+        if (want === (pending[i] ?? shown[i])) return;
+        drop(pending[i]);
+        pending[i] = null;
+        if (want !== shown[i]) pending[i] = add(i, layer!, shown[i]!);
+      });
+      return;
+    }
+    radarKey.current = key;
+    [...shown, ...pending].forEach(drop);
+    [CLIP_LEFT, CLIP_RIGHT, CLIP_OFF].forEach((id) => map.getLayer(id) && map.removeLayer(id));
+    const before = map.getLayer(FILL) ? FILL : undefined;
+    layers.forEach((layer, i) => {
+      shown[i] = pending[i] = null;
+      if (!layer) return;
+      if (compare) map.addLayer(clipLayer(i ? CLIP_RIGHT : CLIP_LEFT, i ? "right" : "left", () => splitRef.current), before);
+      shown[i] = add(i, layer, before);
     });
     if (compare && layers.some(Boolean)) map.addLayer(clipLayer(CLIP_OFF, "off", () => 0), before);
   }, [loaded, site, leftId, rightId, compare, radarAttribution]); // opacity: its own effect below
 
+  // A pending radar layer replaces the shown one when its source has loaded the tiles in view;
+  // when the map is idle, whatever is pending has loaded or has nothing to load in view.
   useEffect(() => {
     const map = mapRef.current;
     if (!loaded || !map) return;
-    RADAR.forEach((id) => map.getLayer(id) && map.setPaintProperty(id, "raster-opacity", radarOpacity));
+    const swap = (only?: string) => {
+      radarPending.current.forEach((id, i) => {
+        if (!id || (only !== undefined && id !== only) || !map.getSource(id)) return;
+        const old = radarShown.current[i];
+        if (old && map.getLayer(old)) map.removeLayer(old);
+        if (old && map.getSource(old)) map.removeSource(old);
+        radarShown.current[i] = id;
+        radarPending.current[i] = null;
+      });
+    };
+    const onData = (e: maplibregl.MapSourceDataEvent) => {
+      if (e.tile && radarPending.current.includes(e.sourceId) && map.isSourceLoaded(e.sourceId)) swap(e.sourceId);
+    };
+    const onIdle = () => swap();
+    map.on("sourcedata", onData);
+    map.on("idle", onIdle);
+    return () => {
+      map.off("sourcedata", onData);
+      map.off("idle", onIdle);
+    };
+  }, [loaded]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!loaded || !map) return;
+    [...radarShown.current, ...radarPending.current].forEach(
+      (id) => id && map.getLayer(id) && map.setPaintProperty(id, "raster-opacity", radarOpacity),
+    );
   }, [loaded, radarOpacity, leftId, rightId]);
 
   // Reference fields of the site: replaced with the collection (empty for Brazil).
