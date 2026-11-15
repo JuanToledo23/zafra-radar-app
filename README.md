@@ -74,6 +74,16 @@ What exists right now:
   "Alerts" in the header lists them in the side panel: a fixed note that they are flags for
   review, code chips that filter the list and outline the matching segments on the map, 50
   rows at a time; clicking a row flies to the segment and opens its detail.
+* **mill operations**: a header switch between "Explorer" and "Mill operations". The latter
+  replays the season as of a date for a mill's field department (`/ops/{site}`, app logic
+  defined in docs/API.md): a "Season replay · data as of" banner with a week stepper and date
+  input kept in sync with the explorer's slider; a brief (cane area, harvested to date and in
+  the last 7 days, standing cane, no date detected, pace and projected end, burned and not
+  harvested, fires outside permitted hours, an estimated cane tonnage for Morelos); the
+  burned-and-not-harvested table with bucket chips (0–2, 3–7, 8–14, > 14 days since the first
+  fire), row click that outlines the field on a map coloured by bucket; CSV exports of the
+  list and of a full field ledger; EN / ES. The loader precomputes each segment's season fire
+  dates for it.
 
 The other event features (raster swipe, deployment) do not exist yet.
 

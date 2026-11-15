@@ -21,7 +21,7 @@ import {
 } from "./season";
 
 // No glyphs or sprites: the style needs nothing from the network to render.
-const STYLE: StyleSpecification = {
+export const STYLE: StyleSpecification = {
   version: 8,
   sources: {
     [BASEMAP_SOURCE]: {
@@ -55,7 +55,7 @@ const REF_NONE = ["==", ["get", "field_id"], ""] as maplibregl.FilterSpecificati
 const REF_LABEL_MINZOOM = 12;
 const REF_HIT_PX = 5; // click tolerance around a reference outline
 // Absolute URL: tiles are fetched from a worker, which cannot resolve a relative path.
-const tilesUrl = (site: string) => `${window.location.origin}/api/tiles/${site}/{z}/{x}/{y}.pbf`;
+export const tilesUrl = (site: string) => `${window.location.origin}/api/tiles/${site}/{z}/{x}/{y}.pbf`;
 const hovered = (yes: unknown, no: unknown) => ["case", ["boolean", ["feature-state", "hover"], false], yes, no];
 
 function addSegmentLayers(map: maplibregl.Map, tiles: string) {
@@ -227,7 +227,8 @@ export default function MapView({
 
       mapRef.current = map;
       setLoaded(true);
-      setBasemap((await probeBasemap()) ? "online" : "offline");
+      const online = await probeBasemap();
+      if (mapRef.current === map) setBasemap(online ? "online" : "offline"); // not if removed meanwhile
     });
 
     return () => {

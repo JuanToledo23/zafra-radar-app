@@ -46,6 +46,13 @@ export function weekSteps(minDay: number, maxDay: number): number[] {
   return steps;
 }
 
+/** Index of the slider step containing `day`: the first Sunday on or after it, clamped to
+ * the steps (0 for an empty list). */
+export function stepIndex(steps: number[], day: number): number {
+  const i = steps.findIndex((s) => s >= day);
+  return i < 0 ? Math.max(steps.length - 1, 0) : i;
+}
+
 export type WeekCount = { week_start: string; harvests: number };
 
 /** Detected harvests summed over the Monday weeks that start on or before `day`. */

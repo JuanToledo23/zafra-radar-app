@@ -37,7 +37,10 @@ max-age=3600`), layer `segments`, extent 4096, buffer 64. Feature properties:
 `date_uncertainty_days`, `harvest_date` (ISO string) and `harvest_day` (integer days since
 1970-01-01, for filtering and colouring by a time slider); both are absent from the feature
 when the segment is undated. `alert_codes`: the segment's alert codes, sorted and joined with
-commas (`BURN_WITHOUT_HARVEST,FIRE_ACTIVE_OUTSIDE_HOURS`), absent when it has none. Below z12 the polygons are simplified in Web Mercator
+commas (`BURN_WITHOUT_HARVEST,FIRE_ACTIVE_OUTSIDE_HOURS`), absent when it has none.
+`first_fire_day`, `last_fire_day`: integer day numbers of the segment's first and last season
+fire (see "Mill operations" below), absent without one; with `harvest_day` they let the map
+colour "burned and not harvested" for any date without reloading tiles. Below z12 the polygons are simplified in Web Mercator
 (`ST_Simplify`) with a tolerance of half a screen pixel at that zoom, taking a tile as 512
 pixels wide (38 m at z10, 19 m at z11), and polygons that collapse are left out (61 of 6,014
 Morelos and 162 of 12,210 Brazil segments at z10, none at z11); from z12 on the geometry is
@@ -135,3 +138,97 @@ an out-of-range `limit`/`offset` gives 422; an unknown site 404.
 
 Order: warnings before info, then by the segment's `harvest_date` (undated last), then
 `segment_id` and `code`. A segment can appear once per code.
+
+## Mill operations: `GET /ops/{site}` and related
+
+A replay of the season "as of" a date for a mill's field department. **App logic, not
+research-library results**; the definitions below are this app's. It is not a live system:
+every number comes from the loaded season files.
+
+**Definitions.**
+
+* **Season window**: `zafra.start` .. `zafra.end` of `configs/<site>.yaml` in the research
+  library, end exclusive (Morelos 2025-11-01 .. 2026-06-01, Brazil 2026-04-01 ..
+  2026-12-01), loaded into `sites.season_start` / `season_end`. A fire is in the season when
+  its UTC time is inside the window, as `zafra.summary.field_facts` filters fires; earlier
+  seasons' fires (the Morelos FIRMS files start 2024-11-01) are excluded.
+* **Season fires** of a segment: FIRMS detections within 200 m of the polygon (on the
+  geography; the library's `alerts.fire_buffer_m`) in the season window, dated by their local
+  date. Precomputed by the loader (`segments.season_fire_dates`, `first_fire_date`,
+  `last_fire_date`, DATA.md).
+* **As of date D**, each segment is in exactly one state: **harvested** (`harvest_date <=
+  D`), **not yet harvested** (`harvest_date > D`, standing cane at D) or **no date detected**
+  (no `harvest_date`; reported separately, never counted as standing cane).
+* **Burned and not harvested as of D**: at least one season fire on or before D and not
+  harvested as of D (not yet harvested **or** no date detected). **Days since burn** = D minus
+  the date of its first season fire. **Buckets**: `0_2` (0–2 days), `3_7`, `8_14`, `over_14`
+  (more than 14 days).
+* **Harvested in the last 7 days**: `harvest_date` in D − 6 .. D. **Pace**: harvested area of
+  the last three full Monday–Sunday weeks ending on or before D (a Sunday D closes its own
+  week), divided by 3, in ha per week. **Projected end**: D plus the not-yet-harvested area ÷
+  pace, in weeks, rounded up to a day; `null` when the pace is 0, D itself when nothing is
+  dated later.
+* **Fires outside permitted hours, last 7 days** (only where the site config enables
+  `FIRE_ACTIVE_OUTSIDE_HOURS` and has a burn window: Morelos): season fires within 200 m of a
+  segment, local date D − 6 .. D, local time outside the config's default window (both ends
+  permitted, as the library's rule). The library's per-municipality windows are not applied
+  (the map has no municipality; every configured window is 09:00–17:00).
+* **Cane tonnage estimate** (only with official mill data giving a mean field yield: Morelos):
+  harvested area × `field_yield_t_ha` of `results/10/ez_final.json` (95.7 t/ha), labelled an
+  estimate.
+
+`as_of` (`YYYY-MM-DD`, optional) defaults to the site's last harvest date. A malformed date
+gives 422, an unknown site 404, an unknown `bucket` 400.
+
+### `GET /ops/{site}?as_of=`
+
+```bash
+curl 'http://localhost:8010/ops/morelos?as_of=2026-02-15'
+```
+
+| key | meaning |
+|---|---|
+| `replay`, `as_of`, `as_of_default` | always `true`; the date used; whether it is the default |
+| `season` | `{name, start, end_exclusive, source}` |
+| `fire_buffer_m` | 200 |
+| `cane` | `{segments, area_ha}` of every map segment (all are cane) |
+| `harvested` | `{segments, area_ha, share_of_cane_area}` |
+| `harvested_last_7_days` | `{from, to, segments, area_ha}` |
+| `not_yet_harvested`, `no_date_detected` | `{segments, area_ha}` |
+| `pace` | `{ha_per_week, weeks: [{start, end, area_ha}]}` (three weeks, oldest first) |
+| `projected_end` | date or `null` |
+| `burned_not_harvested` | `{segments, area_ha, no_date_segments, buckets: [{bucket, min_days, max_days, segments, area_ha}]}` |
+| `fires_outside_hours_last_7_days` | `{from, to, burn_window, window_confirmed, detections, segments}`, or `null` without the rule |
+| `cane_tonnage_estimate` | `{label: "estimate", tonnes, field_yield_t_ha, harvested_area_ha, source}`; **absent** without official yield data |
+
+### `GET /ops/{site}/burned?as_of=&bucket=&limit=&offset=`
+
+The burned-and-not-harvested list as of the date: `{site_id, as_of, bucket, total, limit,
+offset, rows}`, each row `{segment_id, area_ha, first_fire_date, last_fire_date,
+days_since_burn, bucket, harvest_date, date_uncertainty_days, centroid}`. `last_fire_date` is
+the last season fire on or before the date; `harvest_date` is the radar date of the later
+harvest (`null` when none was detected). Order: most days since burn first, then largest area,
+then `segment_id`. `limit` 1–500 (default 50), `offset` >= 0.
+
+### CSV exports
+
+UTF-8 with a byte-order mark (opens in Excel without mojibake), CRLF line ends,
+`Content-Disposition: attachment`.
+
+* `GET /ops/{site}/burned.csv?as_of=&bucket=`: the whole list in the same order; columns
+  `segment_id, area_ha, first_fire_date, last_fire_date, days_since_burn, bucket,
+  harvest_date_later, date_uncertainty_days, lon, lat`.
+* `GET /ops/{site}/ledger.csv?as_of=`: one row per segment, by id; columns `segment_id,
+  area_ha, status_as_of` (`harvested`, `not_yet_harvested`, `no_date_detected`), `harvest_date,
+  date_uncertainty_days, p_cane, p_cane_radar, p_cane_optical, first_season_fire,
+  last_season_fire` (on or before the date), `days_since_burn, bucket` (burned and not
+  harvested only), `alert_codes` (`;`-separated; the library's alerts over the whole season,
+  not as of the date), `lon, lat` (centroid).
+
+### `GET /ops/{site}/fire-to-harvest`
+
+Season statistic, not shown in the web app: for the segments with both a season fire and a
+harvest date, the distribution of `harvest_date − first season fire date` in days: `count`,
+`median`, `q1`, `q3` (linear interpolation, as `percentile_cont`), `min`, `max`,
+`share_within_3` (|days| <= 3), `share_over_7`, `share_over_14`, `share_negative` (first fire
+after the harvest date), as fractions of `count`.

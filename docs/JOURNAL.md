@@ -89,3 +89,15 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
 - Local production test over HTTP on port 8080: app, `/api/health`, tiles (178,390 B, 86,833 gzip,
   87,474 zstd, API `Cache-Control` kept), www redirect; db and api not reachable from the host.
 - Not deployed; nothing sent to a remote machine.
+
+## 2026-11-14 19:35 CST
+
+- Loader: season window and burn window from the site configs into `sites`; per-segment season
+  fire dates (200 m, in the window) into `segments`, their day numbers into the tiles. Two runs
+  give identical counts and checksums (Morelos 2,246 segments with a season fire, Brazil 43).
+- `/ops/{site}` brief, `/ops/{site}/burned` list, two CSV exports (UTF-8 BOM) and
+  `/ops/{site}/fire-to-harvest`; Morelos as of its last harvest date: 3,976 segments, 6,867 ha.
+- Web: "Mill operations" view (banner synced with the slider, brief, bucket table, map by
+  bucket, exports, EN / ES). 28 new tests, 65 pass; type-check and build pass; checked
+  headless in Chrome, both sites and languages.
+

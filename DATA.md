@@ -71,7 +71,7 @@ rules (`zafra.alerts.evaluate`) for every cane segment but writes only the per-c
 
 | Table | Source (Morelos; Brazil equivalent from its config) | Rows loaded |
 |---|---|---|
-| `sites` | `configs/<site>.yaml`: `description` (name), `zafra.name` (season), `aoi.bbox`, `alerts.timezone`; `official_final` from `results/10/ez_final.json`; `alert_counts` from `results/6/alert_counts.json` | one per site; the jsonb columns are NULL for Brazil |
+| `sites` | `configs/<site>.yaml`: `description` (name), `zafra.name` (season), `aoi.bbox`, `alerts.timezone`, `zafra.start` / `zafra.end` (`season_start`, `season_end`; the end exclusive), `alerts.burn_window` (`burn_window`, only where `FIRE_ACTIVE_OUTSIDE_HOURS` is enabled); `official_final` from `results/10/ez_final.json`; `alert_counts` from `results/6/alert_counts.json` | one per site; the jsonb columns are NULL for Brazil |
 | `segments` | slim harvest map (`paths.slim_geojson`) | every feature; Polygons wrapped with `ST_Multi`; CRS84 checked |
 | `segment_series` | `paths.timeseries` (`field_id` → `segment_id`; `date` → `acquisition_date`; `orbit`, `hv_db`, `hh_db`) | cane segments only (below) |
 | `segment_coherence` | `paths.coherence` (`ref_date`, `sec_date`, `coh_mean`, `coh_min`) | cane segments only |
@@ -82,6 +82,7 @@ rules (`zafra.alerts.evaluate`) for every cane segment but writes only the per-c
 | `alerts` | `data/derived/alerts_<site>.json` (below) where it exists, replacing the summaries.jsonl alerts for that site; otherwise `results/6/summaries.jsonl`: `alerts[]` (`code`, `severity`, `evidence`), segment records only | Morelos 3,517, Brazil 5,797 (derived); 9 Morelos rows from summaries.jsonl without the derived file |
 | `sites.alert_rules` | the same derived file: library commit, layer, and per code `severity`, `enabled`, `params`, `count`, `definition`, `definition_source` | NULL without a derived file |
 | `segments.alert_codes` | distinct codes of the segment's `alerts` rows, sorted | set after `alerts` is loaded; empty array without alerts |
+| `segments.season_fire_dates`, `first_fire_date`, `last_fire_date` (+ `first_fire_day`, `last_fire_day`, generated day numbers) | `fires` within 200 m of the polygon on the geography whose UTC time is inside the season window (as `zafra.summary.field_facts` filters fires), each dated by its local date | set after `fires`; Morelos 2,246 segments (first 2025-11-06, last 2026-05-29), Brazil 43; NULL / empty without a season fire |
 | `reference_fields` | `reference_fields` of `configs/<site>.yaml` (`data/fields/fields_v2.geojson`): `id` → `field_id`, `area_ha`, `hyp`, `label`, `harvest_window_start`, `harvest_window_end`, `orig_field`; the other allowed properties (`region`, `municipio`, `ground_truth_*`) in `properties` (jsonb); `facts` of the field's record in `results/6/summaries.jsonl` | every feature (38, Morelos only); Polygons wrapped with `ST_Multi`; CRS84 checked |
 | `reference_dates` | the same GeoJSON: `harvest_window_start/end` (kind `labelled_window`) and each `ground_truth_date[_suffix]` with its `ground_truth_zafra/event/source/note[_suffix]` (kind `ground_truth`) | one row per date present: 26 windows and 2 ground-truth dates |
 | `reference_summaries` | `results/6/summaries.jsonl`: `template.<lang>` and `llm.<lang>` of the reference-field records (`facts.field_id`, no `segment_id`) | same rule as `summaries`; 152 rows (38 fields × 2 languages × template and LLM) |
@@ -115,6 +116,8 @@ ranges: Morelos HV -22.7 to -2.9, HH -17.2 to +9.3; Brazil HV -23.8 to -4.0, HH 
   200 m buffer (`alerts.fire_buffer_m`), so the two counts differ.
 * Known difference, not investigated: weekly.csv has 1,097 Morelos fires in its window; the
   loader's local-date count for the same window is 1,098.
+* Season fires (for `/ops`): the window is taken at 00:00 UTC, as in the library; no loaded
+  fire changes side if the window is taken on local dates instead (checked for both sites).
 
 ## Reference fields and their dates
 
