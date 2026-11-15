@@ -1,6 +1,6 @@
 """Zafra Radar API: /health, /version and the read endpoints over the tables filled by
-app.loader (/sites, /tiles, /segments, /weekly, /reference, /alerts). Endpoint reference:
-docs/API.md."""
+app.loader (/sites, /tiles, /segments, /weekly, /reference, /alerts, /ops). Endpoint
+reference: docs/API.md."""
 
 import datetime as dt
 import json
@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
+from app import ops
 from app.db import engine
 
 VERSION = "0.1.0"
@@ -135,6 +136,7 @@ WITH mvt AS (
            date_uncertainty_days,
            to_char(harvest_date, 'YYYY-MM-DD') AS harvest_date,
            (harvest_date - DATE '1970-01-01') AS harvest_day,
+           first_fire_day, last_fire_day,
            NULLIF(array_to_string(alert_codes, ','), '') AS alert_codes
     FROM segments
     WHERE site_id = :site AND geom && ST_Transform(ST_TileEnvelope(:z, :x, :y), 4326)
@@ -482,3 +484,261 @@ async def alerts(site: str, code: str | None = None,
                     "evidence": as_json(r["evidence"]),
                     "centroid": [r["cx"], r["cy"]]} for r in rows],
     })
+
+
+# --- Mill operations: season replay as of a date (app logic, docs/API.md) -------------------
+
+OPS_SITE_SQL = """
+SELECT s.site_id, s.season, s.season_start, s.season_end, s.burn_window, s.official_final,
+       (SELECT max(harvest_date) FROM segments g WHERE g.site_id = s.site_id) AS last_harvest
+FROM sites s WHERE s.site_id = :site
+"""
+# Not harvested as of :d (not yet harvested or no date) with a season fire on or before :d.
+OPS_BURNED_WHERE = """
+site_id = :site AND first_fire_date <= CAST(:d AS date)
+AND (harvest_date IS NULL OR harvest_date > CAST(:d AS date))
+"""
+OPS_DAYS = "(CAST(:d AS date) - first_fire_date)"
+OPS_BUCKETS_SQL = f"""
+SELECT {ops.bucket_sql(OPS_DAYS)} AS bucket, count(*) AS segments,
+       sum(area_ha::float8) AS area_ha,
+       count(*) FILTER (WHERE harvest_date IS NULL) AS no_date_segments,
+       sum(area_ha::float8) FILTER (WHERE harvest_date IS NULL) AS no_date_area_ha
+FROM segments WHERE {OPS_BURNED_WHERE}
+GROUP BY 1
+"""
+# Season fires (the segments' 200 m buffer, the season window) dated :r0 .. :d locally at a
+# local time outside the burn window [:lo, :hi] (minutes; both ends permitted, as
+# zafra.alerts.fire_active_outside_hours).
+OPS_OUTSIDE_HOURS_SQL = """
+SELECT count(DISTINCT f.fire_id) AS detections, count(DISTINCT g.segment_id) AS segments
+FROM fires f
+JOIN sites t ON t.site_id = f.site_id
+JOIN segments g ON g.site_id = f.site_id
+WHERE f.site_id = :site
+  AND f.datetime_local::date BETWEEN CAST(:r0 AS date) AND CAST(:d AS date)
+  AND f.datetime_utc >= t.season_start::timestamp AT TIME ZONE 'UTC'
+  AND f.datetime_utc < t.season_end::timestamp AT TIME ZONE 'UTC'
+  AND (extract(hour FROM f.datetime_local) * 60 + extract(minute FROM f.datetime_local)
+       NOT BETWEEN :lo AND :hi)
+  AND f.geom && ST_Expand(g.geom, :deg)
+  AND ST_DWithin(f.geom::geography, g.geom::geography, :buffer)
+"""
+OPS_BURNED_COLUMNS = f"""
+segment_id, area_ha, first_fire_date, harvest_date, date_uncertainty_days,
+(SELECT max(x) FROM unnest(season_fire_dates) x WHERE x <= CAST(:d AS date)) AS last_fire_date,
+{OPS_DAYS} AS days_since_burn, {ops.bucket_sql(OPS_DAYS)} AS bucket,
+ST_X(ST_Centroid(geom)) AS cx, ST_Y(ST_Centroid(geom)) AS cy
+"""
+OPS_BURNED_FILTER = f"{OPS_BURNED_WHERE} AND (CAST(:bucket AS text) IS NULL OR {ops.bucket_sql(OPS_DAYS)} = :bucket)"
+OPS_BURNED_TOTAL_SQL = f"SELECT count(*) AS n FROM segments WHERE {OPS_BURNED_FILTER}"
+OPS_BURNED_SQL = f"""
+SELECT {OPS_BURNED_COLUMNS} FROM segments WHERE {OPS_BURNED_FILTER}
+ORDER BY days_since_burn DESC, area_ha DESC, segment_id
+LIMIT :limit OFFSET :offset
+"""
+OPS_LEDGER_SQL = """
+SELECT segment_id, area_ha, harvest_date, date_uncertainty_days, p_cane, p_cane_radar,
+       p_cane_optical, CASE WHEN first_fire_date <= CAST(:d AS date) THEN first_fire_date END
+           AS first_fire_date,
+       (SELECT max(x) FROM unnest(season_fire_dates) x WHERE x <= CAST(:d AS date))
+           AS last_fire_date,
+       alert_codes, ST_X(ST_Centroid(geom)) AS cx, ST_Y(ST_Centroid(geom)) AS cy
+FROM segments WHERE site_id = :site ORDER BY segment_id
+"""
+OPS_FIRE_TO_HARVEST_SQL = """
+SELECT harvest_date - first_fire_date AS days FROM segments
+WHERE site_id = :site AND harvest_date IS NOT NULL AND first_fire_date IS NOT NULL
+"""
+OPS_PAGE_MAX = 500
+LEDGER_STATUS = {"harvested": "harvested", "not_yet_harvested": "not_yet_harvested",
+                 "no_date": "no_date_detected"}
+
+
+async def ops_context(conn, site: str, as_of: dt.date | None) -> tuple[dict, dt.date]:
+    """The site's ops row and the date used: `as_of`, or the site's last harvest date."""
+    await require_site(conn, site)
+    info = (await fetch(conn, OPS_SITE_SQL, site=site))[0]
+    day = as_of or info["last_harvest"] or info["season_start"]
+    return info, day
+
+
+def check_bucket(bucket: str | None) -> str | None:
+    if bucket and bucket not in ops.BUCKET_KEYS:
+        raise HTTPException(400, f"unknown bucket: {bucket} (one of {', '.join(ops.BUCKET_KEYS)})")
+    return bucket or None
+
+
+def season_info(info: dict, site: str) -> dict:
+    return {"name": info["season"], "start": info["season_start"],
+            "end_exclusive": info["season_end"],
+            "source": f"configs/{site}.yaml zafra.start / zafra.end (research library)"}
+
+
+def tonnage_estimate(final: dict | None, harvested_ha: float):
+    """Harvested area x the mill's official mean field yield, or None without one."""
+    yield_t_ha = (final or {}).get("field_yield_t_ha")
+    if not isinstance(yield_t_ha, (int, float)) or not yield_t_ha > 0:
+        return None
+    return {"label": "estimate", "tonnes": round(harvested_ha * yield_t_ha),
+            "field_yield_t_ha": yield_t_ha, "harvested_area_ha": round(harvested_ha, 2),
+            "source": f"{final.get('mill')} mill, official mean field yield of the season "
+                      f"({final.get('source')}, results/10/ez_final.json)"}
+
+
+@app.get("/ops/{site}")
+async def ops_brief(site: str, as_of: dt.date | None = None) -> dict:
+    """Season replay as of a date: harvested, standing and undated cane, pace and projected
+    end, burned-and-not-harvested buckets, fires outside permitted hours (docs/API.md)."""
+    async with engine.connect() as conn:
+        info, d = await ops_context(conn, site, as_of)
+        r0, _ = ops.recent_window(d)
+        weeks = ops.pace_weeks(d)
+        week_cols = ", ".join(
+            f"coalesce(sum(area_ha::float8) FILTER (WHERE harvest_date BETWEEN"
+            f" CAST(:w{i}a AS date) AND CAST(:w{i}b AS date)), 0) AS w{i}" for i in range(len(weeks)))
+        params = {f"w{i}{e}": v for i, w in enumerate(weeks) for e, v in zip("ab", w)}
+        totals = (await fetch(conn, f"""
+            SELECT count(*) AS n, coalesce(sum(area_ha::float8), 0) AS ha,
+              count(*) FILTER (WHERE harvest_date <= CAST(:d AS date)) AS h_n,
+              coalesce(sum(area_ha::float8) FILTER (WHERE harvest_date <= CAST(:d AS date)), 0) AS h_ha,
+              count(*) FILTER (WHERE harvest_date > CAST(:d AS date)) AS s_n,
+              coalesce(sum(area_ha::float8) FILTER (WHERE harvest_date > CAST(:d AS date)), 0) AS s_ha,
+              count(*) FILTER (WHERE harvest_date IS NULL) AS u_n,
+              coalesce(sum(area_ha::float8) FILTER (WHERE harvest_date IS NULL), 0) AS u_ha,
+              count(*) FILTER (WHERE harvest_date BETWEEN CAST(:r0 AS date) AND CAST(:d AS date)) AS r_n,
+              coalesce(sum(area_ha::float8) FILTER (WHERE harvest_date BETWEEN CAST(:r0 AS date)
+                       AND CAST(:d AS date)), 0) AS r_ha,
+              {week_cols}
+            FROM segments WHERE site_id = :site""", site=site, d=d, r0=r0, **params))[0]
+        buckets = {b["bucket"]: b for b in await fetch(conn, OPS_BUCKETS_SQL, site=site, d=d)}
+        outside = None
+        bw = as_json(info["burn_window"])
+        if bw:
+            lo, hi = (ops.minutes(t) for t in bw["default"])
+            row = (await fetch(conn, OPS_OUTSIDE_HOURS_SQL, site=site, d=d, r0=r0, lo=lo, hi=hi,
+                               deg=FIRE_PREFILTER_DEG, buffer=FIRE_BUFFER_M))[0]
+            outside = {"from": r0, "to": d, "burn_window": bw["default"],
+                       "window_confirmed": bw["default_confirmed"],
+                       "detections": row["detections"], "segments": row["segments"]}
+
+    cane_ha = totals["ha"]
+    week_ha = [totals[f"w{i}"] for i in range(len(weeks))]
+    pace = sum(week_ha) / len(weeks)
+    burned = [{"bucket": key, "min_days": lo, "max_days": hi,
+               "segments": buckets.get(key, {}).get("segments", 0),
+               "area_ha": round(buckets.get(key, {}).get("area_ha") or 0.0, 2)}
+              for key, lo, hi in ops.BUCKETS]
+    out = {
+        "site_id": site,
+        "replay": True,
+        "as_of": d,
+        "as_of_default": as_of is None,
+        "season": season_info(info, site),
+        "fire_buffer_m": FIRE_BUFFER_M,
+        "cane": {"segments": totals["n"], "area_ha": round(cane_ha, 2)},
+        "harvested": {"segments": totals["h_n"], "area_ha": round(totals["h_ha"], 2),
+                      "share_of_cane_area": totals["h_ha"] / cane_ha if cane_ha else None},
+        "harvested_last_7_days": {"from": r0, "to": d, "segments": totals["r_n"],
+                                  "area_ha": round(totals["r_ha"], 2)},
+        "not_yet_harvested": {"segments": totals["s_n"], "area_ha": round(totals["s_ha"], 2)},
+        "no_date_detected": {"segments": totals["u_n"], "area_ha": round(totals["u_ha"], 2)},
+        "pace": {"ha_per_week": round(pace, 2),
+                 "weeks": [{"start": a, "end": b, "area_ha": round(h, 2)}
+                           for (a, b), h in zip(weeks, week_ha)]},
+        "projected_end": ops.projected_end(d, totals["s_ha"], pace),
+        "burned_not_harvested": {
+            "segments": sum(b["segments"] for b in burned),
+            "area_ha": round(sum(b["area_ha"] for b in burned), 2),
+            "no_date_segments": sum(b.get("no_date_segments") or 0 for b in buckets.values()),
+            "buckets": burned,
+        },
+        "fires_outside_hours_last_7_days": outside,
+    }
+    estimate = tonnage_estimate(as_json(info["official_final"]), totals["h_ha"])
+    if estimate:
+        out["cane_tonnage_estimate"] = estimate
+    return clean(out)
+
+
+@app.get("/ops/{site}/burned")
+async def ops_burned(site: str, as_of: dt.date | None = None, bucket: str | None = None,
+                     limit: int = Query(50, ge=1, le=OPS_PAGE_MAX),
+                     offset: int = Query(0, ge=0)) -> dict:
+    """Burned and not harvested as of the date, longest since burn first, then largest."""
+    bucket = check_bucket(bucket)
+    async with engine.connect() as conn:
+        _, d = await ops_context(conn, site, as_of)
+        p = {"site": site, "d": d, "bucket": bucket}
+        total = (await fetch(conn, OPS_BURNED_TOTAL_SQL, **p))[0]["n"]
+        rows = await fetch(conn, OPS_BURNED_SQL, limit=limit, offset=offset, **p)
+    return clean({
+        "site_id": site, "as_of": d, "bucket": bucket, "total": total, "limit": limit,
+        "offset": offset,
+        "rows": [{**real({k: r[k] for k in ("segment_id", "area_ha", "first_fire_date",
+                                             "last_fire_date", "days_since_burn", "bucket",
+                                             "harvest_date", "date_uncertainty_days")}),
+                  "centroid": [r["cx"], r["cy"]]} for r in rows],
+    })
+
+
+def csv_response(body: bytes, name: str) -> Response:
+    return Response(content=body, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.get("/ops/{site}/burned.csv")
+async def ops_burned_csv(site: str, as_of: dt.date | None = None,
+                         bucket: str | None = None) -> Response:
+    """The whole burned-and-not-harvested list (same filters and order), as CSV."""
+    bucket = check_bucket(bucket)
+    async with engine.connect() as conn:
+        _, d = await ops_context(conn, site, as_of)
+        rows = await fetch(conn, OPS_BURNED_SQL, site=site, d=d, bucket=bucket,
+                           limit=None, offset=0)
+    header = ["segment_id", "area_ha", "first_fire_date", "last_fire_date", "days_since_burn",
+              "bucket", "harvest_date_later", "date_uncertainty_days", "lon", "lat"]
+    body = ops.csv_bytes(header, [
+        [r["segment_id"], f"{r['area_ha']:.2f}", r["first_fire_date"], r["last_fire_date"],
+         r["days_since_burn"], r["bucket"], r["harvest_date"],
+         None if r["date_uncertainty_days"] is None else f"{r['date_uncertainty_days']:g}",
+         f"{r['cx']:.6f}", f"{r['cy']:.6f}"] for r in rows])
+    return csv_response(body, f"{site}_burned_not_harvested_{d}{'_' + bucket if bucket else ''}.csv")
+
+
+@app.get("/ops/{site}/ledger.csv")
+async def ops_ledger_csv(site: str, as_of: dt.date | None = None) -> Response:
+    """One row per segment with its state as of the date, as CSV."""
+    async with engine.connect() as conn:
+        _, d = await ops_context(conn, site, as_of)
+        rows = await fetch(conn, OPS_LEDGER_SQL, site=site, d=d)
+    header = ["segment_id", "area_ha", "status_as_of", "harvest_date", "date_uncertainty_days",
+              "p_cane", "p_cane_radar", "p_cane_optical", "first_season_fire",
+              "last_season_fire", "days_since_burn", "bucket", "alert_codes", "lon", "lat"]
+    out = []
+    for r in rows:
+        state = ops.state_of(r["harvest_date"], d)
+        burned = r["first_fire_date"] is not None and state != "harvested"
+        days = (d - r["first_fire_date"]).days if burned else None
+        fmt = lambda v, spec: None if v is None else format(v, spec)  # noqa: E731
+        out.append([r["segment_id"], fmt(r["area_ha"], ".2f"), LEDGER_STATUS[state],
+                    r["harvest_date"], fmt(r["date_uncertainty_days"], "g"),
+                    fmt(r["p_cane"], ".3f"), fmt(r["p_cane_radar"], ".3f"),
+                    fmt(r["p_cane_optical"], ".3f"), r["first_fire_date"], r["last_fire_date"],
+                    days, ops.bucket_of(days) if burned else None, list(r["alert_codes"]),
+                    f"{r['cx']:.6f}", f"{r['cy']:.6f}"])
+    return csv_response(ops.csv_bytes(header, out), f"{site}_field_ledger_{d}.csv")
+
+
+@app.get("/ops/{site}/fire-to-harvest")
+async def ops_fire_to_harvest(site: str) -> dict:
+    """Season statistic: days from the first season fire to the harvest date, over the
+    segments with both (not shown in the web app)."""
+    async with engine.connect() as conn:
+        info, _ = await ops_context(conn, site, None)
+        days = [r["days"] for r in await fetch(conn, OPS_FIRE_TO_HARVEST_SQL, site=site)]
+    return clean({"site_id": site, "season": season_info(info, site),
+                  "fire_buffer_m": FIRE_BUFFER_M,
+                  "definition": "harvest_date - first season fire date, in days, over segments "
+                                "with both; negative = first fire after the harvest date",
+                  **ops.fire_to_harvest_stats(days)})

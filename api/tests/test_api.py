@@ -171,3 +171,138 @@ def test_alert_codes_on_detail_and_tile():
     x, y = tile_of(*page["centroid"], 14)
     status, _, body = get(f"/tiles/morelos/14/{x}/{y}.pbf")
     assert status == 200 and b"alert_codes" in body and b"FIRE_ACTIVE_OUTSIDE_HOURS" in body
+
+
+# --- mill operations (/ops) ----------------------------------------------------------------
+
+import csv  # noqa: E402
+import datetime as dt  # noqa: E402
+import io  # noqa: E402
+
+BEFORE_SEASON = "2025-10-15"  # Morelos season window starts 2025-11-01
+
+
+def ops_csv(path: str):
+    status, ctype, body = get(path)
+    assert status == 200 and ctype.startswith("text/csv"), (path, status)
+    assert body.startswith(b"\xef\xbb\xbf")  # UTF-8 BOM for Excel
+    return list(csv.DictReader(io.StringIO(body.decode("utf-8-sig"))))
+
+
+def test_ops_default_is_last_harvest_and_matches_the_map():
+    site = next(s for s in get_json("/sites") if s["site_id"] == "morelos")
+    d = get_json("/ops/morelos")
+    assert d["replay"] is True and d["as_of_default"] is True
+    assert d["as_of"] == site["harvest_date_max"]
+    assert d["season"]["start"] == "2025-11-01" and d["season"]["end_exclusive"] == "2026-06-01"
+    assert d["harvested"]["segments"] == 3976 and round(d["harvested"]["area_ha"]) == 6867
+    assert d["not_yet_harvested"]["segments"] == 0
+    assert d["cane_tonnage_estimate"]["label"] == "estimate"
+    assert d["cane_tonnage_estimate"]["field_yield_t_ha"] == 95.7
+    assert d["cane_tonnage_estimate"]["tonnes"] == round(d["harvested"]["area_ha"] * 95.7)
+
+
+def test_ops_before_the_season_is_empty():
+    d = get_json(f"/ops/morelos?as_of={BEFORE_SEASON}")
+    assert d["harvested"]["segments"] == 0 and d["harvested"]["area_ha"] == 0
+    assert d["harvested_last_7_days"]["segments"] == 0
+    assert d["pace"]["ha_per_week"] == 0 and d["projected_end"] is None
+    assert d["burned_not_harvested"]["segments"] == 0
+    assert get_json(f"/ops/morelos/burned?as_of={BEFORE_SEASON}")["total"] == 0
+
+
+def test_ops_burned_list_has_only_fires_on_or_before_as_of():
+    for as_of in ("2025-11-20", "2026-01-05", "2026-02-15"):
+        page = get_json(f"/ops/morelos/burned?as_of={as_of}&limit=500")
+        assert page["total"] > 0
+        for r in page["rows"]:
+            assert r["first_fire_date"] <= r["last_fire_date"] <= as_of
+            assert r["harvest_date"] is None or r["harvest_date"] > as_of
+            assert r["days_since_burn"] == (dt.date.fromisoformat(as_of)
+                                            - dt.date.fromisoformat(r["first_fire_date"])).days
+
+
+def test_ops_partition_and_monotonic_harvest():
+    site = next(s for s in get_json("/sites") if s["site_id"] == "morelos")
+    day, end = dt.date(2025, 11, 2), dt.date.fromisoformat(site["harvest_date_max"])
+    prev = (0, 0.0)
+    while day <= end + dt.timedelta(days=7):
+        d = get_json(f"/ops/morelos?as_of={day}")
+        parts = [d[k] for k in ("harvested", "not_yet_harvested", "no_date_detected")]
+        assert sum(p["segments"] for p in parts) == d["cane"]["segments"] == 6014
+        assert abs(sum(p["area_ha"] for p in parts) - d["cane"]["area_ha"]) < 0.05
+        h = (d["harvested"]["segments"], d["harvested"]["area_ha"])
+        assert h[0] >= prev[0] and h[1] >= prev[1] - 1e-6, (day, prev, h)
+        prev = h
+        day += dt.timedelta(days=7)
+    assert prev[0] == 3976
+
+
+def test_ops_buckets_match_the_list_and_its_order():
+    as_of = "2026-02-15"
+    d = get_json(f"/ops/morelos?as_of={as_of}")
+    b = d["burned_not_harvested"]
+    assert [x["bucket"] for x in b["buckets"]] == ["0_2", "3_7", "8_14", "over_14"]
+    assert b["segments"] == sum(x["segments"] for x in b["buckets"])
+    assert get_json(f"/ops/morelos/burned?as_of={as_of}&limit=1")["total"] == b["segments"]
+    for x in b["buckets"]:
+        page = get_json(f"/ops/morelos/burned?as_of={as_of}&bucket={x['bucket']}&limit=500")
+        assert page["total"] == x["segments"]
+        assert {r["bucket"] for r in page["rows"]} <= {x["bucket"]}
+        assert all(x["min_days"] <= r["days_since_burn"] <= (x["max_days"] or 10 ** 6)
+                   for r in page["rows"])
+        keys = [(-r["days_since_burn"], -r["area_ha"]) for r in page["rows"]]
+        assert keys == sorted(keys)
+
+
+def test_ops_csv_exports():
+    as_of = "2026-02-15"
+    d = get_json(f"/ops/morelos?as_of={as_of}")
+    rows = ops_csv(f"/ops/morelos/burned.csv?as_of={as_of}")
+    assert len(rows) == d["burned_not_harvested"]["segments"]
+    assert {"segment_id", "area_ha", "first_fire_date", "last_fire_date", "days_since_burn",
+            "bucket", "harvest_date_later", "lon", "lat"} <= set(rows[0])
+    over = ops_csv(f"/ops/morelos/burned.csv?as_of={as_of}&bucket=over_14")
+    assert len(over) == d["burned_not_harvested"]["buckets"][3]["segments"]
+    ledger = ops_csv(f"/ops/morelos/ledger.csv?as_of={as_of}")
+    assert len(ledger) == 6014 and len({r["segment_id"] for r in ledger}) == 6014
+    status = {k: sum(r["status_as_of"] == k for r in ledger)
+              for k in ("harvested", "not_yet_harvested", "no_date_detected")}
+    assert status == {"harvested": d["harvested"]["segments"],
+                      "not_yet_harvested": d["not_yet_harvested"]["segments"],
+                      "no_date_detected": d["no_date_detected"]["segments"]}
+    assert sum(bool(r["bucket"]) for r in ledger) == d["burned_not_harvested"]["segments"]
+    assert all(r["first_season_fire"] <= as_of for r in ledger if r["first_season_fire"])
+    assert all(r["last_season_fire"] <= as_of for r in ledger if r["last_season_fire"])
+    assert {"p_cane", "p_cane_radar", "p_cane_optical", "date_uncertainty_days",
+            "alert_codes"} <= set(ledger[0])
+
+
+def test_ops_brazil_has_no_tonnage_or_burn_window():
+    d = get_json("/ops/brazil")
+    assert "cane_tonnage_estimate" not in d
+    assert d["fires_outside_hours_last_7_days"] is None
+    assert d["season"]["start"] == "2026-04-01"
+
+
+def test_ops_fire_to_harvest_statistic():
+    d = get_json("/ops/morelos/fire-to-harvest")
+    assert d["count"] > 0 and d["q1"] <= d["median"] <= d["q3"]
+    for k in ("share_within_3", "share_over_7", "share_over_14", "share_negative"):
+        assert 0 <= d[k] <= 1
+    assert d["share_over_14"] <= d["share_over_7"]
+
+
+def test_ops_errors():
+    assert get("/ops/nowhere")[0] == 404
+    assert get("/ops/morelos/burned?bucket=nope")[0] == 400
+    assert get("/ops/morelos/burned.csv?bucket=nope")[0] == 400
+    assert get("/ops/morelos?as_of=2026-02-30")[0] == 422
+    assert get("/ops/morelos/burned?limit=0")[0] == 422
+
+
+def test_tiles_carry_the_fire_day_numbers():
+    page = get_json("/ops/morelos/burned?as_of=2026-02-15&limit=1")["rows"][0]
+    x, y = tile_of(*page["centroid"], 14)
+    status, _, body = get(f"/tiles/morelos/14/{x}/{y}.pbf")
+    assert status == 200 and b"first_fire_day" in body and b"last_fire_day" in body

@@ -18,7 +18,7 @@ CFG = {
     "name": "morelos",
     "description": "Ingenio Emiliano Zapata supply area",
     "aoi": {"bbox": [-99.35, 18.50, -99.05, 18.75]},
-    "zafra": {"name": "2025-26"},
+    "zafra": {"name": "2025-26", "start": "2025-11-01", "end": "2026-06-01"},
     "alerts": {"timezone": "America/Mexico_City"},
     "firms": {"dir": "data/firms"},
     "paths": {"slim_geojson": "data/results/m.geojson", "timeseries": "data/features/t.parquet",
@@ -47,11 +47,24 @@ def test_segment_record_rejects_unmapped_property():
         L.segment_record({**PROPS, "cane_confidence": "high"})
 
 
+def test_burn_window_only_when_the_rule_is_enabled():
+    bw = {"default": ["09:00", "17:00"], "default_confirmed": False,
+          "municipalities": {"Tlaquiltenango": ["09:00", "17:00"]}}
+    on = {"timezone": "America/Mexico_City", "burn_window": bw,
+          "rules": {"FIRE_ACTIVE_OUTSIDE_HOURS": {"enabled": True, "severity": "warning"}}}
+    assert L.burn_window_of({**CFG, "alerts": on}) == bw
+    off = {**on, "rules": {"FIRE_ACTIVE_OUTSIDE_HOURS": {"enabled": False}}}
+    assert L.burn_window_of({**CFG, "alerts": off}) is None
+    assert L.burn_window_of({**CFG, "alerts": {**on, "burn_window": None}}) is None  # Brazil
+    assert L.burn_window_of(CFG) is None
+
+
 def test_site_info_and_paths():
     info = L.site_info(CFG)
     assert info == {"site_id": "morelos", "name": "Ingenio Emiliano Zapata supply area",
                     "season": "2025-26", "bbox": (-99.35, 18.50, -99.05, 18.75),
-                    "timezone": "America/Mexico_City"}
+                    "timezone": "America/Mexico_City",
+                    "season_start": dt.date(2025, 11, 1), "season_end": dt.date(2026, 6, 1)}
     p = L.site_paths(CFG)
     assert p["weekly"] == "results/4e/weekly.csv"
     assert p["summaries"] == "results/6/summaries.jsonl"
