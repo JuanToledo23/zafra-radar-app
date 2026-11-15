@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Site } from "./App";
-import { count, formatDate, formatNumber, LANGS, t, tValue, type Lang } from "./i18n";
+import { count, formatDate, formatNumber, LANGS, siteName, t, tValue, type Lang } from "./i18n";
 import OpsMap, { type OpsFocus } from "./OpsMap";
 import {
   LIST_DAYS,
@@ -131,6 +131,7 @@ export default function OpsView({ site, day, onDay, lang, onLang }: Props) {
     <div className="ops" data-testid="ops" lang={lang}>
       <div className="ops-banner">
         <div className="ops-title">
+          <span data-testid="ops-site">{siteName(lang, site)}</span>
           <strong data-testid="ops-replay">
             {t(lang, "replay", { season: seasonLabel(site.season), date: date(iso) })}
           </strong>
@@ -160,6 +161,10 @@ export default function OpsView({ site, day, onDay, lang, onLang }: Props) {
           </span>
           <a className="zoom ops-export" data-testid="export-ledger" download href={`${api}/ledger.csv?as_of=${iso}`}>
             {t(lang, "exportLedger")}
+          </a>
+          <a className="zoom ops-export" data-testid="weekly-report" target="_blank" rel="noreferrer"
+            href={`/?report=${encodeURIComponent(site.site_id)}&as_of=${iso}&lang=${lang}`}>
+            {t(lang, "weeklyReport")}
           </a>
         </div>
       </div>

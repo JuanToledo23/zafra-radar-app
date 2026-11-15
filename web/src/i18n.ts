@@ -77,6 +77,47 @@ const EN = {
   mapEarlier: "Harvested earlier",
   mapNotDetected: "Not yet detected as harvested",
   mapFire: "Fire detection, last 7 days (not attributed)",
+  // site names by site_id (siteName); a site without one shows its config name
+  site_morelos: "Ingenio Emiliano Zapata supply area, Morelos, Mexico (training site)",
+  site_brazil: "Ribeirão Preto, São Paulo, Brazil (Jardinópolis / Sales Oliveira; transfer test, no retraining)",
+  // weekly report (WeeklyReport.tsx)
+  weeklyReport: "Weekly report",
+  print: "Print / Save as PDF",
+  reportTitle: "Weekly field report",
+  weekEnding: "Week ending {date}",
+  seasonReplay: "Season replay {season}",
+  reportSeason: "Season {season}",
+  keyNumbers: "Key numbers",
+  vsPrev7: "7 days before: {ha}",
+  chartWeekly: "Detected harvest area per week (ha)",
+  chartWeeklyNote: "Monday–Sunday weeks, up to the report date.",
+  chartWeeklyPartial: "The last week counts only up to {date} (lighter bar).",
+  chartCumulative: "Cumulative harvested area (ha)",
+  chartCumulativeNote: "At each official weekly cut-off (Saturday) up to {date}.",
+  seriesDetected: "Detected (radar)",
+  seriesOfficial: "Official (mill reports)",
+  reportHarvested: "Harvested this week",
+  reportHarvestedNote: "{shown} largest of {total} with a radar harvest date from {from} to {to}.",
+  reportMoreCsv: "{n} more in the CSV export (“Export list” on the screen, last 7 days).",
+  reportNotDetectedNote: "{fields}, {ha} ({pct} of cane area). The {shown} largest:",
+  reportNoneMore: "All are listed.",
+  reportFires: "Fire detections near cane, last 7 days",
+  colDate: "Local date",
+  colDetections: "Detections",
+  colNight: "At night",
+  colMaxFrp: "Max FRP (MW)",
+  methodTitle: "Method and limits",
+  methodRadar:
+    "Harvest dates come from NISAR L-band radar: a field is dated between the last pass that saw it standing and the first that saw it cut, so a harvest is known only after the next pass.",
+  methodNotEvery:
+    "The radar does not date every harvested field: “not yet detected as harvested” includes fields already cut, and the detected area stays below the mill's.",
+  methodErrorMorelos:
+    "Date error, from the research library's validation (docs/VALIDATION.md): on 26 labelled cane fields, out of fold, the delivered dates have a median absolute error of 3.5 days against Sentinel-2 NDVI harvest windows, 24 of 26 within ±12 days. The references are optical windows 2–10 days wide, not field visits, and the library calls these errors optimistic.",
+  methodErrorBrazil:
+    "Date error, from the research library's validation (docs/VALIDATION.md): on a sample of 40 dated segments, the dates have a median absolute error of 2.5 days against an NDVI rule, 37 of 40 within ±12 days. The reference is optical, not field visits.",
+  methodErrorNone: "No date validation is recorded for this site in the research library.",
+  methodLinks: "Fire-attribution analysis: {findings}. Research library: {library}.",
+  generated: "Generated {ts}",
 };
 export type Key = keyof typeof EN;
 
@@ -153,6 +194,45 @@ const ES: Record<Key, string> = {
   mapEarlier: "Cortadas antes",
   mapNotDetected: "Aún sin corte detectado",
   mapFire: "Detección de fuego, últimos 7 días (sin atribuir)",
+  site_morelos: "Zona de abastecimiento del Ingenio Emiliano Zapata, Morelos, México (sitio de entrenamiento)",
+  site_brazil: "Ribeirão Preto, São Paulo, Brasil (Jardinópolis / Sales Oliveira; prueba de transferencia, sin reentrenar)",
+  weeklyReport: "Reporte semanal",
+  print: "Imprimir / Guardar como PDF",
+  reportTitle: "Reporte semanal de campo",
+  weekEnding: "Semana al {date}",
+  seasonReplay: "Repetición de la zafra {season}",
+  reportSeason: "Zafra {season}",
+  keyNumbers: "Cifras clave",
+  vsPrev7: "7 días anteriores: {ha}",
+  chartWeekly: "Superficie con corte detectado por semana (ha)",
+  chartWeeklyNote: "Semanas de lunes a domingo, hasta la fecha del reporte.",
+  chartWeeklyPartial: "La última semana cuenta solo hasta el {date} (barra más clara).",
+  chartCumulative: "Superficie cortada acumulada (ha)",
+  chartCumulativeNote: "En cada corte semanal oficial (sábado) hasta el {date}.",
+  seriesDetected: "Detectada (radar)",
+  seriesOfficial: "Oficial (reportes del ingenio)",
+  reportHarvested: "Cortadas esta semana",
+  reportHarvestedNote: "Las {shown} más grandes de {total} con fecha de corte por radar del {from} al {to}.",
+  reportMoreCsv: "{n} más en la exportación CSV (“Exportar lista” en la pantalla, últimos 7 días).",
+  reportNotDetectedNote: "{fields}, {ha} ({pct} de la superficie de caña). Las {shown} más grandes:",
+  reportNoneMore: "Están todas en la lista.",
+  reportFires: "Detecciones de fuego cerca de la caña, últimos 7 días",
+  colDate: "Fecha local",
+  colDetections: "Detecciones",
+  colNight: "De noche",
+  colMaxFrp: "FRP máx. (MW)",
+  methodTitle: "Método y límites",
+  methodRadar:
+    "Las fechas de corte vienen del radar NISAR de banda L: una parcela se fecha entre el último paso que la vio en pie y el primero que la vio cortada, así que un corte se conoce hasta el paso siguiente.",
+  methodNotEvery:
+    "El radar no fecha todas las parcelas cortadas: “aún sin corte detectado” incluye parcelas ya cortadas, y la superficie detectada queda debajo de la del ingenio.",
+  methodErrorMorelos:
+    "Error de la fecha, según la validación de la biblioteca de investigación (docs/VALIDATION.md): en 26 parcelas de caña etiquetadas, con validación cruzada, las fechas entregadas tienen un error absoluto mediano de 3.5 días frente a las ventanas de corte NDVI de Sentinel-2; 24 de 26 dentro de ±12 días. Las referencias son ventanas ópticas de 2 a 10 días, no visitas a campo, y la biblioteca considera optimistas estos errores.",
+  methodErrorBrazil:
+    "Error de la fecha, según la validación de la biblioteca de investigación (docs/VALIDATION.md): en una muestra de 40 segmentos fechados, las fechas tienen un error absoluto mediano de 2.5 días frente a una regla NDVI; 37 de 40 dentro de ±12 días. La referencia es óptica, no visitas a campo.",
+  methodErrorNone: "La biblioteca de investigación no registra una validación de fechas para este sitio.",
+  methodLinks: "Análisis de atribución de fuegos: {findings}. Biblioteca de investigación: {library}.",
+  generated: "Generado el {ts}",
 };
 
 const DICT: Record<Lang, Record<Key, string>> = { en: EN, es: ES };
@@ -166,6 +246,11 @@ export function t(lang: Lang, key: Key, vars: Record<string, string | number> = 
  * confidence level), otherwise `fallback`. */
 export function tValue(lang: Lang, key: string, fallback: string): string {
   return key in EN ? t(lang, key as Key) : fallback;
+}
+
+/** The site's name in `lang` (`site_<id>` in the dictionary), else the name in its config. */
+export function siteName(lang: Lang, site: { site_id: string; name: string }): string {
+  return tValue(lang, `site_${site.site_id}`, site.name);
 }
 
 /** `n` formatted, then the singular or plural word: "1 field", "2 fields". */

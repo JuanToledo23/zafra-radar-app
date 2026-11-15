@@ -64,11 +64,20 @@ export type OpsFires = {
   rows: FireRow[];
 };
 
+// GET /ops/{site}/series: the weekly report's charts, up to the date.
+export type OpsSeries = {
+  as_of: string;
+  weeks: { start: string; end: string; partial: boolean; segments: number; area_ha: number }[];
+  official?: { report: number; cutoff: string; official_cum_ha: number; detected_cum_ha: number }[];
+};
+
 export type ListDays = 7 | 14;
 export const LIST_DAYS: ListDays[] = [7, 14];
 export const OPS_PAGE = 50;
 // Repository copy of the findings document (docs/FINDINGS.md).
-export const FINDINGS_URL = "https://github.com/JuanToledo23/zafra-radar-app/blob/main/docs/FINDINGS.md";
+export const REPO_URL = "https://github.com/JuanToledo23/zafra-radar-app";
+export const FINDINGS_URL = `${REPO_URL}/blob/main/docs/FINDINGS.md`;
+export const LIBRARY_URL = "https://github.com/JuanToledo23/zafra-radar-research";
 
 // Harvested in the window: dark orange; harvested earlier: muted grey; not yet detected as
 // harvested: green. They differ in lightness too, so they stay apart with the common forms

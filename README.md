@@ -84,7 +84,12 @@ What exists right now:
   official harvested area beside the detected one); a "Harvested this week" list (7 or 14
   days, to reconcile with the mill's delivery records), a "Not yet detected as harvested" list
   and the last 7 days' fire detections near cane as context, never attributed to a field; a map
-  as of the date; CSV exports of both lists and of a full field ledger; EN / ES. An earlier
+  as of the date; CSV exports of both lists and of a full field ledger; a "Weekly report"
+  button that opens a print-ready page for the date and language (key numbers, weekly detected
+  area and, for Morelos, cumulative detected against official area up to the date, the 25
+  largest fields harvested in the last 7 days, the 15 largest not yet detected, fire
+  detections near cane per day, method and limits with the library's measured date error;
+  two pages on Letter or A4, "Print / Save as PDF" through the browser); EN / ES. An earlier
   burned-and-not-harvested list was tested against chance and removed:
   [docs/FINDINGS.md](docs/FINDINGS.md).
 

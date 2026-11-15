@@ -115,3 +115,13 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
   (harvested this week, not yet detected as harvested, official area beside detected), fire
   detections near cane as unattributed context, and per-date map tiles; a test checks every
   endpoint of the screen for dates after the selected one.
+
+## 2026-11-14 20:47 CST
+
+- Mill operations: "Weekly report" opens a print-ready page (`/?report=<site>&as_of=&lang=`)
+  from the `/ops` endpoints as of the date, EN / ES, with "Print / Save as PDF".
+- New `/ops/{site}/series` (weekly detected area and cumulative official vs detected area up to
+  the date, in ha); added to the no-hindsight test, plus one test of its weeks and official rows.
+- Date error in the report's footnote quoted from the library's docs/VALIDATION.md (:18, :26).
+- Printed with headless Chrome: Morelos 2026-02-15 EN and ES, Brazil 2026-09-30, Letter and A4,
+  2 pages each, no horizontal overflow; PDFs not kept.
