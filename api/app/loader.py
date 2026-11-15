@@ -1,6 +1,7 @@
 """Load the research library's precomputed outputs into PostGIS.
 
     python -m app.loader --site morelos|brazil|all [--recreate-schema]
+    python -m app.loader --site all --list-inputs   # input files only (deploy.sh)
 
 ZAFRA_DATA is the root of a zafra-radar-research checkout (DATA.md lists every input and
 the table it feeds). ZAFRA_DERIVED, optional, is the app's derived-data directory
@@ -127,6 +128,15 @@ def site_paths(cfg: dict) -> dict:
         "alert_counts": f"{results6}/alert_counts.json",
         "reference_fields": cfg.get("reference_fields"),  # None where the site has none
     }
+
+
+def site_inputs(cfg: dict) -> list:
+    """Every input file of a site relative to ZAFRA_DATA, required and optional, except the
+    FIRMS CSVs (a directory glob): the config, the site_paths files and the official data."""
+    site, rel = cfg["name"], site_paths(cfg)
+    files = [f"configs/{site}.yaml"]
+    files += [v for k, v in rel.items() if k != "firms_dir" and v]
+    return files + list(OFFICIAL.get(site, ()))
 
 
 def segment_record(props: dict) -> tuple:
@@ -585,12 +595,33 @@ async def table_counts(conn, sites) -> dict:
     return counts
 
 
-async def run(sites, recreate: bool) -> None:
-    import asyncpg
-
+def data_root() -> Path:
     root = Path(os.environ.get("ZAFRA_DATA", ""))
     if not os.environ.get("ZAFRA_DATA") or not root.is_dir():
         raise MissingInput(f"ZAFRA_DATA is not a directory: {os.environ.get('ZAFRA_DATA')!r}")
+    return root
+
+
+def list_inputs(root: Path, sites) -> list:
+    """Input files of `sites` that exist under root, relative to it, in load order (site_inputs
+    plus the FIRMS CSVs). deploy.sh copies exactly these to the server. A missing file is
+    reported on stderr and left out; the loader decides whether it is required."""
+    out = []
+    for site in sites:
+        cfg = yaml.safe_load(require(root, f"configs/{site}.yaml").read_text())
+        firms = sorted((root / cfg["firms"]["dir"]).glob("*.csv"))
+        for rel in site_inputs(cfg) + [str(p.relative_to(root)) for p in firms]:
+            if (root / rel).is_file():
+                out.append(rel)
+            else:
+                print(f"[{site}] not found, not listed: {rel}", file=sys.stderr)
+    return list(dict.fromkeys(out))
+
+
+async def run(sites, recreate: bool) -> None:
+    import asyncpg
+
+    root = data_root()
     derived = Path(os.environ["ZAFRA_DERIVED"]) if os.environ.get("ZAFRA_DERIVED") else None
     conn = await asyncpg.connect(dsn())
     try:
@@ -607,9 +638,14 @@ def main(argv=None) -> int:
     ap.add_argument("--site", required=True, choices=(*SITES, "all"))
     ap.add_argument("--recreate-schema", action="store_true",
                     help="drop and recreate the app tables before loading")
+    ap.add_argument("--list-inputs", action="store_true",
+                    help="print the input files (relative to ZAFRA_DATA) and exit; no database")
     args = ap.parse_args(argv)
     sites = SITES if args.site == "all" else (args.site,)
     try:
+        if args.list_inputs:
+            print("\n".join(list_inputs(data_root(), sites)))
+            return 0
         asyncio.run(run(sites, args.recreate_schema))
     except MissingInput as exc:
         print(f"error: {exc}", file=sys.stderr)

@@ -272,3 +272,36 @@ def test_alert_rules_keeps_code_order_and_library_commit():
                    "params": {"days_before": 7}, "count": 0, "definition": "a dated harvest ...",
                    "definition_source": "src/zafra/alerts.py:22-25"}
     json.dumps(rules)  # serialisable as the jsonb column
+
+
+class _StopBeforeLoad(Exception):
+    pass
+
+
+class _NoDatabase:
+    def transaction(self):
+        raise _StopBeforeLoad
+
+
+def test_list_inputs_equals_the_files_load_site_reads(tmp_path, monkeypatch):
+    """deploy.sh copies list_inputs(); it must name every file load_site opens, no more."""
+    import asyncio
+
+    import yaml
+
+    cfg = {**CFG, "reference_fields": "data/fields/f.geojson"}
+    rels = L.site_inputs(cfg) + ["data/firms/a.csv", "data/firms/b.csv"]
+    for rel in rels:
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text("")
+    (tmp_path / "configs/morelos.yaml").write_text(yaml.safe_dump(cfg))
+    listed = L.list_inputs(tmp_path, ["morelos"])
+    opened = []
+    for name in ("require", "optional"):
+        real = getattr(L, name)
+        monkeypatch.setattr(L, name, lambda root, rel, *a, _f=real: opened.append(rel) or _f(root, rel, *a))
+    with pytest.raises(_StopBeforeLoad):
+        asyncio.run(L.load_site(_NoDatabase(), tmp_path, "morelos"))
+    firms = [str(p.relative_to(tmp_path)) for p in sorted((tmp_path / "data/firms").glob("*.csv"))]
+    assert sorted(listed) == sorted(opened + firms)
+    assert sorted(opened + firms) == sorted(rels)

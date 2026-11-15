@@ -66,6 +66,8 @@ rules (`zafra.alerts.evaluate`) for every cane segment but writes only the per-c
 
 `python -m app.loader` (`api/app/loader.py`) reads the paths from `configs/<site>.yaml`
 (`paths`, `firms.dir`) as the library does, and writes one transaction per site.
+`--list-inputs` prints the input files that exist (21 at `0d6b064`) without loading;
+`deploy.sh` copies exactly those to the server.
 
 | Table | Source (Morelos; Brazil equivalent from its config) | Rows loaded |
 |---|---|---|
