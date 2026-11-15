@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ALERT_FIRE_NOTE, ALERT_NOTE, ALERT_PAGE, alertLabel, evidenceLine, oneLine, type AlertPage, type AlertRow } from "./alerts";
+import { Icon } from "./icons";
 import { FINDINGS_URL } from "./ops";
+import { EmptyState, Skeleton } from "./ui";
 
 type Props = {
   siteId: string;
@@ -57,13 +59,14 @@ export default function AlertsList({ siteId, code, onCode, onOpen }: Props) {
   return (
     <div className="alerts-list" data-testid="alerts-list" data-state={load.state}>
       <p className="note alerts-note" data-testid="alerts-note">
+        <Icon name="info" className="note-icon" />
         {ALERT_NOTE} {ALERT_FIRE_NOTE}{" "}
         <a href={FINDINGS_URL} target="_blank" rel="noreferrer" data-testid="findings-link">
           Why: fire detections cannot be attributed to single fields
         </a>
         .
       </p>
-      {load.state === "loading" && <p className="muted">Loading alerts…</p>}
+      {load.state === "loading" && <Skeleton lines={5} label="Loading alerts…" />}
       {load.state === "error" && <p className="error">Could not load alerts: {load.message}</p>}
       {page && (
         <>
@@ -100,6 +103,7 @@ export default function AlertsList({ siteId, code, onCode, onOpen }: Props) {
             first, then by harvest date
             {page.library ? `. Computed with the research library at ${page.library.commit_short}.` : "."}
           </p>
+          {page.total === 0 && <EmptyState title={code ? "No alerts of this type for this site." : "No alerts for this site."} />}
           <ul className="alert-rows">
             {rows.map((a) => (
               <li key={`${a.segment_id}/${a.code}`}>
@@ -119,7 +123,7 @@ export default function AlertsList({ siteId, code, onCode, onOpen }: Props) {
             ))}
           </ul>
           {rows.length < page.total && (
-            <button type="button" className="zoom more" data-testid="alerts-more" disabled={more} onClick={loadMore}>
+            <button type="button" className="btn btn-secondary more" data-testid="alerts-more" disabled={more} onClick={loadMore}>
               {more ? "Loading…" : `Load more (${(page.total - rows.length).toLocaleString("en-US")} left)`}
             </button>
           )}

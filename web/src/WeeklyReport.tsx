@@ -14,6 +14,7 @@ import {
   type OpsFires,
   type OpsSeries,
 } from "./ops";
+import { Icon } from "./icons";
 import { fromDay, mondayOf, toDay } from "./season";
 import { MarkerShape, SeriesSwatch } from "./TimeSeriesChart";
 
@@ -93,8 +94,8 @@ export default function WeeklyReport({ siteId, iso, lang }: { siteId: string; is
   return (
     <div className="report-page" lang={lang}>
       <div className="report-toolbar no-print">
-        <button type="button" className="zoom" data-testid="report-print" disabled={!data} onClick={() => window.print()}>
-          {t(lang, "print")}
+        <button type="button" className="btn btn-primary" data-testid="report-print" disabled={!data} onClick={() => window.print()}>
+          <Icon name="report" /> {t(lang, "print")}
         </button>
         {error && <span className="error">{t(lang, "loadError", { msg: error })}</span>}
         {!data && !error && <span className="muted">{t(lang, "loading")}</span>}

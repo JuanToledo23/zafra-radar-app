@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AlertRow } from "./alerts";
 import FindField from "./FindField";
+import Guide, { guideDismissed } from "./Guide";
+import { Icon } from "./icons";
+import LayersPanel from "./LayersPanel";
 import MapView from "./MapView";
 import OpsView from "./OpsView";
-import RadarControl from "./RadarControl";
 import SeasonPanel, { type Weekly } from "./SeasonPanel";
 import SidePanel from "./SidePanel";
 import TimeSlider from "./TimeSlider";
 import type { BasemapState } from "./basemap";
-import type { Lang } from "./i18n";
+import { LANGS, t, type Lang } from "./i18n";
 import { DEFAULT_RADAR, changeLayers, resolveRadar, type RadarSettings, type RasterIndex } from "./radar";
 import type { ReferenceCollection } from "./reference";
 import { cumulativeHarvests, stepIndex, toDay, weekSteps } from "./season";
+import { Segmented } from "./ui";
 
 // Subset of GET /sites used by the map and the season panel (docs/API.md).
 export type Site = {
@@ -68,6 +71,7 @@ export default function App() {
   const [alertCode, setAlertCode] = useState<string | null>(null);
   const [rasters, setRasters] = useState<RasterIndex | null>(null);
   const [radar, setRadar] = useState<RadarSettings>(DEFAULT_RADAR);
+  const [guideOpen, setGuideOpen] = useState(() => !guideDismissed());
 
   useEffect(() => {
     fetch("/api/health")
@@ -171,13 +175,31 @@ export default function App() {
     setPlaying(!playing);
   };
 
+  const toggleAlerts = () => {
+    if (!alertsOpen) setSelected(null); // open on the list, not on a field
+    else setAlertCode(null);
+    setAlertsOpen(!alertsOpen);
+  };
+  const switchView = (v: View) => {
+    setPlaying(false);
+    setView(v);
+  };
+
   return (
     <div className="app">
-      <header className="header">
-        <div className="title">
+      <header className="topbar">
+        <div className="brand">
+          <svg className="brand-mark" width={28} height={28} viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="8" fill="currentColor" />
+            <path d="M9 23a10 10 0 0 1 14-14M12.5 23a6.5 6.5 0 0 1 9-9" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" />
+            <circle cx="23" cy="23" r="2.6" fill="#fff" />
+          </svg>
           <h1>Zafra Radar</h1>
+        </div>
+        <label className="site-field">
+          <span className="sr-only">Site</span>
           <select
-            className="site-select"
+            className="select site-select"
             data-testid="site-select"
             aria-label="Site"
             value={siteId}
@@ -193,102 +215,122 @@ export default function App() {
               </option>
             ))}
           </select>
-          <span className="view-switch" role="group" aria-label="View">
-            {(["explorer", "ops"] as View[]).map((v) => (
-              <button
-                key={v}
-                type="button"
-                className={view === v ? "on" : ""}
-                aria-pressed={view === v}
-                data-testid={`view-${v}`}
-                onClick={() => {
-                  setPlaying(false);
-                  setView(v);
-                }}
-              >
-                {v === "explorer" ? "Explorer" : "Mill operations"}
-              </button>
-            ))}
-          </span>
+        </label>
+        <Segmented
+          label="View"
+          className="view-switch"
+          value={view}
+          onChange={switchView}
+          options={(["explorer", "ops"] as View[]).map((v) => ({
+            value: v,
+            label: v === "explorer" ? "Explorer" : "Mill operations",
+            testId: `view-${v}`,
+          }))}
+        />
+        <div className="topbar-right">
           {view === "explorer" && (
-            <>
-              <button
-                type="button"
-                className={`season-toggle${seasonOpen ? " on" : ""}`}
-                aria-pressed={seasonOpen}
-                data-testid="season-toggle"
-                onClick={() => setSeasonOpen(!seasonOpen)}
-              >
-                Season progress
-              </button>
-              <button
-                type="button"
-                className={`season-toggle${referenceOn ? " on" : ""}`}
-                aria-pressed={referenceOn}
-                data-testid="reference-toggle"
-                disabled={!reference?.features.length}
-                title={reference?.features.length ? undefined : "No reference fields for this site"}
-                onClick={() => setReferenceOn(!referenceOn)}
-              >
-                Reference fields
-              </button>
-              <button
-                type="button"
-                className={`season-toggle${alertsOpen ? " on" : ""}`}
-                aria-pressed={alertsOpen}
-                data-testid="alerts-toggle"
-                onClick={() => {
-                  if (!alertsOpen) setSelected(null); // open on the list, not on a field
-                  else setAlertCode(null);
-                  setAlertsOpen(!alertsOpen);
-                }}
-              >
-                Alerts
-              </button>
-              <FindField
-                siteId={siteId}
-                reference={reference}
-                onFound={(sel, bbox) => {
-                  if (sel?.kind === "reference") setReferenceOn(true);
-                  setSelected(sel);
-                  setZoomTo({ bbox });
-                }}
-              />
-            </>
+            <FindField
+              siteId={siteId}
+              reference={reference}
+              onFound={(sel, bbox) => {
+                if (sel?.kind === "reference") setReferenceOn(true);
+                setSelected(sel);
+                setZoomTo({ bbox });
+              }}
+            />
           )}
-        </div>
-        <div className="badges">
-          <span className={`badge badge-${basemap}`} data-testid="basemap-state">
-            basemap: {basemap === "online" ? "satellite" : basemap === "offline" ? "offline (plain)" : "checking"}
-          </span>
-          <span className={`badge badge-${api === "ok" ? "online" : "offline"}`} data-testid="api-state">
-            api: {api}
-          </span>
+          {view === "ops" && (
+            <Segmented
+              label={t(lang, "language")}
+              size="sm"
+              value={lang}
+              onChange={setLang}
+              options={LANGS.map((l) => ({ value: l, label: l.toUpperCase(), testId: `ops-lang-${l}` }))}
+            />
+          )}
+          <div className="status" aria-label="Connection status">
+            <span className={`status-item status-${basemap}`} data-testid="basemap-state" title="Map background">
+              basemap: {basemap === "online" ? "satellite" : basemap === "offline" ? "offline (plain)" : "checking"}
+            </span>
+            <span className={`status-item status-${api === "ok" ? "online" : api === "checking" ? "checking" : "offline"}`} data-testid="api-state" title="Data service">
+              api: {api}
+            </span>
+          </div>
+          {view === "explorer" && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm guide-btn"
+              aria-pressed={guideOpen}
+              data-testid="guide-open"
+              onClick={() => setGuideOpen(!guideOpen)}
+            >
+              <Icon name="help" /> Start here
+            </button>
+          )}
         </div>
       </header>
       {view === "ops" ? (
         <main className="main ops-main">
-          {site && asOf !== null && <OpsView site={site} day={asOf} onDay={setAsOf} lang={lang} onLang={setLang} />}
+          {site && asOf !== null && <OpsView site={site} day={asOf} onDay={setAsOf} lang={lang} />}
         </main>
       ) : (
         <main className={`main${seasonOpen ? " season-open" : ""}${seasonOpen && seasonExpanded ? " season-expanded" : ""}`}>
           <div className="map-col">
-            <MapView
-              site={site}
-              day={day}
-              zoomTo={zoomTo}
-              reference={reference}
-              referenceOn={referenceOn}
-              alertCode={alertsOpen ? alertCode : null}
-              selected={selected}
-              onSelect={setSelected}
-              onBasemap={setBasemap}
-              radar={radarView}
-              radarOpacity={radar.opacity}
-              radarOutlines={radar.outlines}
-              radarAttribution={rasters?.attribution.text ?? null}
-              compare={radar.mode === "compare"}
-            />
+            <div className="map-area">
+              <MapView
+                site={site}
+                day={day}
+                zoomTo={zoomTo}
+                reference={reference}
+                referenceOn={referenceOn}
+                alertCode={alertsOpen ? alertCode : null}
+                selected={selected}
+                onSelect={setSelected}
+                onBasemap={setBasemap}
+                radar={radarView}
+                radarOpacity={radar.opacity}
+                radarOutlines={radar.outlines}
+                radarAttribution={rasters?.attribution.text ?? null}
+                compare={radar.mode === "compare"}
+              />
+              <LayersPanel
+                site={site}
+                reference={reference}
+                referenceOn={referenceOn}
+                onReference={() => setReferenceOn(!referenceOn)}
+                alertsOpen={alertsOpen}
+                alertCode={alertCode}
+                onAlerts={toggleAlerts}
+                rasters={rasters}
+                radar={radar}
+                radarView={radarView}
+                onRadar={setRadar}
+              />
+              {guideOpen && (
+                <Guide
+                  onClose={() => setGuideOpen(false)}
+                  onPlay={() => {
+                    if (!playing) togglePlay();
+                  }}
+                  onOpenOps={() => switchView("ops")}
+                />
+              )}
+            </div>
+            {day !== null && (
+              <TimeSlider
+                steps={steps}
+                index={at}
+                onIndex={(i) => {
+                  setPlaying(false);
+                  setAsOf(steps[i]);
+                }}
+                playing={playing}
+                onTogglePlay={togglePlay}
+                harvests={weekly ? cumulativeHarvests(weekly.weeks, day) : null}
+                seasonOpen={seasonOpen}
+                onToggleSeason={() => setSeasonOpen(!seasonOpen)}
+              />
+            )}
             {seasonOpen && site && (
               <SeasonPanel
                 site={site}
@@ -301,7 +343,6 @@ export default function App() {
               />
             )}
           </div>
-          <RadarControl index={rasters} settings={radar} view={radarView} onChange={setRadar} />
           <SidePanel
             site={site}
             selected={selected}
@@ -318,19 +359,6 @@ export default function App() {
               setZoomTo({ bbox: [x - ALERT_ZOOM_DEG, y - ALERT_ZOOM_DEG, x + ALERT_ZOOM_DEG, y + ALERT_ZOOM_DEG] });
             }}
           />
-          {day !== null && (
-            <TimeSlider
-              steps={steps}
-              index={at}
-              onIndex={(i) => {
-                setPlaying(false);
-                setAsOf(steps[i]);
-              }}
-              playing={playing}
-              onTogglePlay={togglePlay}
-              harvests={weekly ? cumulativeHarvests(weekly.weeks, day) : null}
-            />
-          )}
         </main>
       )}
     </div>

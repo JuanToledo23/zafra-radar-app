@@ -1,5 +1,6 @@
 import type { Site } from "./App";
 import { Summary } from "./FieldDetail";
+import { Icon } from "./icons";
 import {
   daysVsReference,
   formatDiff,
@@ -9,6 +10,7 @@ import {
   type ReferenceDate,
   type ReferenceProps,
 } from "./reference";
+import { EmptyState, TitleTip } from "./ui";
 
 // Plain-language values of the reference fields' NDVI labels (research library script 07).
 const LABELS: Record<string, string> = { cana: "cane", no_cana: "not cane", dudoso: "doubtful" };
@@ -82,22 +84,26 @@ export default function ReferenceDetail({ site, field, onZoom, onOpenSegment }: 
             {LABELS[field.hyp ?? ""] ?? field.hyp ?? "–"}
           </div>
         </div>
-        <button type="button" className="zoom" onClick={() => onZoom(field.bbox)}>
-          Zoom to field
+        <button type="button" className="btn btn-secondary btn-sm zoom" onClick={() => onZoom(field.bbox)}>
+          <Icon name="target" /> Zoom to field
         </button>
       </div>
 
       <section className="block" data-testid="reference-dates">
-        <h3>Reference dates</h3>
+        <TitleTip tip="Dates known for this field from outside the radar: a harvest window seen in Sentinel-2 optical images (NDVI) and, for some fields, a date reported from the ground.">
+          Reference dates
+        </TitleTip>
         {field.reference_dates.length ? (
           field.reference_dates.map((r) => <DateBlock key={r.property} r={r} />)
         ) : (
-          <p className="muted">No reference date for this field.</p>
+          <EmptyState title="No reference date for this field." />
         )}
       </section>
 
       <section className="block" data-testid="reference-radar">
-        <h3>Radar vs reference</h3>
+        <TitleTip tip="The radar harvest date of the whole field and of each map segment overlapping it, and how many days it differs from the reference dates.">
+          Radar vs reference
+        </TitleTip>
         {comparable.length > 0 && (
           <p className="muted small">
             Δ = radar date − reference date, in days (positive: radar later); for a window, 0 inside it,
@@ -110,7 +116,8 @@ export default function ReferenceDetail({ site, field, onZoom, onOpenSegment }: 
             {site.series_date_max}); no difference computed.
           </p>
         ))}
-        <table className="fires ref-table">
+        <div className="table-scroll">
+        <table className="table table-compact ref-table">
           <thead>
             <tr>
               <th>Radar</th>
@@ -148,6 +155,7 @@ export default function ReferenceDetail({ site, field, onZoom, onOpenSegment }: 
             ))}
           </tbody>
         </table>
+        </div>
         {field.segments.length === 0 && <p className="muted small">No cane segment of the map overlaps this field.</p>}
         {facts?.cane_confidence && (
           <p className="muted small">
@@ -158,7 +166,9 @@ export default function ReferenceDetail({ site, field, onZoom, onOpenSegment }: 
       </section>
 
       <section className="block">
-        <h3>Summary</h3>
+        <TitleTip tip="A short text about this field from its facts, in English or Spanish; the label says whether an LLM wrote it (then verified) or a template.">
+          Summary
+        </TitleTip>
         <Summary key={field.field_id} summary={field.summary} />
       </section>
     </div>

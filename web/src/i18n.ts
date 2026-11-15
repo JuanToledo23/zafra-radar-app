@@ -118,6 +118,16 @@ const EN = {
   methodErrorNone: "No date validation is recorded for this site in the research library.",
   methodLinks: "Fire-attribution analysis: {findings}. Research library: {library}.",
   generated: "Generated {ts}",
+  // "?" tooltips of the mill operations screen
+  whatIsThis: "What is this?",
+  tipCaneArea: "All the area mapped as sugarcane at this site.",
+  tipHarvested: "Cane area with a radar harvest date on or before this date.",
+  tipLast7: "Cane area with a radar harvest date in the 7 days up to this date; below it, the 7 days before.",
+  tipPace: "Mean harvested area per week over the last 3 full weeks.",
+  tipNotDetected: "Cane area with no radar harvest date yet; it includes some fields already cut that the radar has not dated.",
+  tipTonnage: "Harvested area multiplied by the mill's official mean field yield: an estimate, not weighed cane.",
+  tipOfficial: "The harvested area the mill reports in its official weekly report, beside the area the radar detected.",
+  tipMap: "The fields as of this date: recently harvested, harvested earlier and not yet detected, with recent fire detections as points.",
 };
 export type Key = keyof typeof EN;
 
@@ -233,6 +243,15 @@ const ES: Record<Key, string> = {
   methodErrorNone: "La biblioteca de investigación no registra una validación de fechas para este sitio.",
   methodLinks: "Análisis de atribución de fuegos: {findings}. Biblioteca de investigación: {library}.",
   generated: "Generado el {ts}",
+  whatIsThis: "¿Qué es esto?",
+  tipCaneArea: "Toda la superficie mapeada como caña en este sitio.",
+  tipHarvested: "Superficie de caña con fecha de corte por radar en esta fecha o antes.",
+  tipLast7: "Superficie de caña con fecha de corte por radar en los 7 días hasta esta fecha; debajo, los 7 días anteriores.",
+  tipPace: "Superficie cortada promedio por semana en las últimas 3 semanas completas.",
+  tipNotDetected: "Superficie de caña aún sin fecha de corte por radar; incluye algunas parcelas ya cortadas que el radar no ha fechado.",
+  tipTonnage: "Superficie cortada multiplicada por el rendimiento de campo oficial promedio del ingenio: una estimación, no caña pesada.",
+  tipOfficial: "La superficie cosechada que el ingenio reporta en su reporte semanal oficial, junto a la que detectó el radar.",
+  tipMap: "Las parcelas a esta fecha: cortadas recientemente, cortadas antes y aún sin corte detectado, con las detecciones de fuego recientes como puntos.",
 };
 
 const DICT: Record<Lang, Record<Key, string>> = { en: EN, es: ES };

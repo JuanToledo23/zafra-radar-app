@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Selection } from "./App";
+import { Icon } from "./icons";
 import type { ReferenceCollection } from "./reference";
 
 type Bbox = [number, number, number, number];
@@ -40,7 +41,9 @@ export default function FindField({ siteId, reference, onFound }: Props) {
 
   return (
     <form className="find" role="search" onSubmit={submit} data-testid="find-field">
+      <Icon name="search" className="find-icon" />
       <input
+        className="input"
         type="search"
         aria-label="Find field"
         placeholder="Find field (p36, cc20456)"
@@ -50,7 +53,7 @@ export default function FindField({ siteId, reference, onFound }: Props) {
           if (status === "not-found") setStatus("idle");
         }}
       />
-      <button type="submit" disabled={status === "searching"}>
+      <button type="submit" className="btn btn-secondary btn-sm" disabled={status === "searching"}>
         Find
       </button>
       {status === "not-found" && (

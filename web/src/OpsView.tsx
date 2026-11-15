@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Site } from "./App";
-import { count, formatDate, formatNumber, LANGS, siteName, t, tValue, type Lang } from "./i18n";
+import { count, formatDate, formatNumber, siteName, t, tValue, type Key, type Lang } from "./i18n";
+import { Icon } from "./icons";
 import OpsMap, { type OpsFocus } from "./OpsMap";
 import {
   LIST_DAYS,
@@ -14,13 +15,13 @@ import {
   type OpsFires,
 } from "./ops";
 import { fromDay, toDay } from "./season";
+import { EmptyState, InfoTip, Skeleton } from "./ui";
 
 type Props = {
   site: Site;
   day: number;
   onDay: (day: number) => void;
   lang: Lang;
-  onLang: (lang: Lang) => void;
 };
 
 type Load<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ok"; data: T };
@@ -66,7 +67,7 @@ function usePaged<R>(base: string) {
 }
 
 /** Mill operations: the season replayed as of `day`, using only what was known on that day. */
-export default function OpsView({ site, day, onDay, lang, onLang }: Props) {
+export default function OpsView({ site, day, onDay, lang }: Props) {
   const iso = fromDay(day);
   const api = `/api/ops/${site.site_id}`;
   const [brief, setBrief] = useState<Load<OpsBrief>>({ state: "loading" });
@@ -129,72 +130,71 @@ export default function OpsView({ site, day, onDay, lang, onLang }: Props) {
 
   return (
     <div className="ops" data-testid="ops" lang={lang}>
-      <div className="ops-banner">
+      <div className="ops-toolbar">
         <div className="ops-title">
-          <span data-testid="ops-site">{siteName(lang, site)}</span>
-          <strong data-testid="ops-replay">
-            {t(lang, "replay", { season: seasonLabel(site.season), date: date(iso) })}
-          </strong>
-          <span className="ops-badge">{t(lang, "notLive")}</span>
+          <span className="ops-site" data-testid="ops-site">{siteName(lang, site)}</span>
+          <span className="ops-heading">
+            <strong data-testid="ops-replay">
+              {t(lang, "replay", { season: seasonLabel(site.season), date: date(iso) })}
+            </strong>
+            <span className="pill pill-warn">{t(lang, "notLive")}</span>
+          </span>
         </div>
         <div className="ops-controls">
-          <button type="button" className="zoom" aria-label={t(lang, "prevWeek")} title={t(lang, "prevWeek")}
-            data-testid="ops-prev" disabled={!!seasonMin && iso <= seasonMin} onClick={() => step(-1)}>
-            ◀ 7
-          </button>
-          <label className="ops-date">
-            <span className="muted small">{t(lang, "asOf")}</span>
-            <input type="date" data-testid="ops-date" value={iso} min={seasonMin} max={seasonMax}
-              onChange={(e) => e.target.value && onDay(toDay(e.target.value))} />
-          </label>
-          <button type="button" className="zoom" aria-label={t(lang, "nextWeek")} title={t(lang, "nextWeek")}
-            data-testid="ops-next" disabled={!!seasonMax && iso >= seasonMax} onClick={() => step(1)}>
-            7 ▶
-          </button>
-          <span className="toggle" role="group" aria-label={t(lang, "language")}>
-            {LANGS.map((l) => (
-              <button key={l} type="button" className={lang === l ? "on" : ""} aria-pressed={lang === l}
-                data-testid={`ops-lang-${l}`} onClick={() => onLang(l)}>
-                {l.toUpperCase()}
-              </button>
-            ))}
-          </span>
-          <a className="zoom ops-export" data-testid="export-ledger" download href={`${api}/ledger.csv?as_of=${iso}`}>
-            {t(lang, "exportLedger")}
+          <div className="stepper" role="group" aria-label={t(lang, "asOf")}>
+            <button type="button" className="icon-btn" aria-label={t(lang, "prevWeek")} title={t(lang, "prevWeek")}
+              data-testid="ops-prev" disabled={!!seasonMin && iso <= seasonMin} onClick={() => step(-1)}>
+              <Icon name="chevronLeft" />
+            </button>
+            <label className="ops-date">
+              <span className="stepper-label">{t(lang, "asOf")}</span>
+              <input type="date" className="input" data-testid="ops-date" value={iso} min={seasonMin} max={seasonMax}
+                onChange={(e) => e.target.value && onDay(toDay(e.target.value))} />
+            </label>
+            <button type="button" className="icon-btn" aria-label={t(lang, "nextWeek")} title={t(lang, "nextWeek")}
+              data-testid="ops-next" disabled={!!seasonMax && iso >= seasonMax} onClick={() => step(1)}>
+              <Icon name="chevronRight" />
+            </button>
+          </div>
+          <a className="btn btn-secondary" data-testid="export-ledger" download href={`${api}/ledger.csv?as_of=${iso}`}>
+            <Icon name="download" /> {t(lang, "exportLedger")}
           </a>
-          <a className="zoom ops-export" data-testid="weekly-report" target="_blank" rel="noreferrer"
+          <a className="btn btn-primary" data-testid="weekly-report" target="_blank" rel="noreferrer"
             href={`/?report=${encodeURIComponent(site.site_id)}&as_of=${iso}&lang=${lang}`}>
-            {t(lang, "weeklyReport")}
+            <Icon name="report" /> {t(lang, "weeklyReport")}
           </a>
         </div>
       </div>
-      <p className="ops-timing" data-testid="ops-timing">{t(lang, "timing")}</p>
+      <p className="ops-timing" data-testid="ops-timing">
+        <Icon name="info" className="note-icon" />
+        <span>{t(lang, "timing")}</span>
+      </p>
 
       {brief.state === "error" && <p className="error">{t(lang, "loadError", { msg: brief.message })}</p>}
       <div className="ops-brief" data-testid="ops-brief" data-as-of={b?.as_of ?? ""}>
         {b ? (
           <>
-            <Card label={t(lang, "caneArea")} value={ha(b.cane.area_ha)} note={fields(b.cane.segments)} />
-            <Card testId="brief-harvested" label={t(lang, "harvested")} value={ha(b.harvested.area_ha)}
+            <Card lang={lang} tip="tipCaneArea" label={t(lang, "caneArea")} value={ha(b.cane.area_ha)} note={fields(b.cane.segments)} />
+            <Card lang={lang} tip="tipHarvested" testId="brief-harvested" label={t(lang, "harvested")} value={ha(b.harvested.area_ha)}
               note={`${pct(b.harvested.share_of_cane_area)} ${t(lang, "ofCane")} · ${fields(b.harvested.segments)}`} />
-            <Card testId="brief-last7" label={t(lang, "last7")} value={ha(b.harvested_last_7_days.area_ha)}
+            <Card lang={lang} tip="tipLast7" testId="brief-last7" label={t(lang, "last7")} value={ha(b.harvested_last_7_days.area_ha)}
               note={t(lang, "last7Note", { from: date(b.harvested_last_7_days.from), to: date(b.harvested_last_7_days.to),
                 fields: fields(b.harvested_last_7_days.segments) })}
               sub={t(lang, "prev7", { ha: ha(b.harvested_previous_7_days.area_ha), fields: fields(b.harvested_previous_7_days.segments) })} />
-            <Card label={t(lang, "pace")} value={`${n(b.pace.ha_per_week)} ${t(lang, "paceUnit")}`}
+            <Card lang={lang} tip="tipPace" label={t(lang, "pace")} value={`${n(b.pace.ha_per_week)} ${t(lang, "paceUnit")}`}
               note={t(lang, "paceNote", { from: date(b.pace.weeks[0].start), to: date(b.pace.weeks[b.pace.weeks.length - 1].end) })} />
-            <Card testId="brief-not-detected" label={t(lang, "notDetected")} value={ha(b.not_yet_detected.area_ha)}
+            <Card lang={lang} tip="tipNotDetected" testId="brief-not-detected" label={t(lang, "notDetected")} value={ha(b.not_yet_detected.area_ha)}
               note={`${pct(b.not_yet_detected.share_of_cane_area)} ${t(lang, "ofCane")} · ${fields(b.not_yet_detected.segments)}`}
               sub={t(lang, "notDetectedNote")} />
             {b.cane_tonnage_estimate !== undefined && (
-              <Card testId="brief-tonnage" label={t(lang, "tonnage")}
+              <Card lang={lang} tip="tipTonnage" testId="brief-tonnage" label={t(lang, "tonnage")}
                 value={b.cane_tonnage_estimate ? `≈ ${n(b.cane_tonnage_estimate.tonnes)} t` : "—"}
                 note={b.cane_tonnage_estimate
                   ? t(lang, "tonnageNote", { yield: n(b.cane_tonnage_estimate.yield_t_ha, 2), date: date(b.cane_tonnage_estimate.official_cutoff) })
                   : t(lang, "tonnageNone")} />
             )}
             {b.official !== undefined && (
-              <Card testId="brief-official" label={t(lang, "official")}
+              <Card lang={lang} tip="tipOfficial" testId="brief-official" label={t(lang, "official")}
                 value={b.official ? ha(b.official.official_harvested_ha) : "—"}
                 note={b.official
                   ? t(lang, "officialNote", { date: date(b.official.cutoff), ha: ha(b.official.detected_harvested_ha),
@@ -204,7 +204,8 @@ export default function OpsView({ site, day, onDay, lang, onLang }: Props) {
             )}
           </>
         ) : (
-          brief.state === "loading" && <p className="muted">{t(lang, "loading")}</p>
+          brief.state === "loading" &&
+          Array.from({ length: 5 }, (_, i) => <Skeleton key={i} lines={3} label={t(lang, "loading")} className="ops-card" />)
         )}
       </div>
 
@@ -230,8 +231,8 @@ export default function OpsView({ site, day, onDay, lang, onLang }: Props) {
                     </button>
                   ))}
                 </span>
-                <a className="zoom ops-export" data-testid="export-harvested" download
-                  href={`${api}/harvested.csv?as_of=${iso}&days=${days}`}>{t(lang, "exportList")}</a>
+                <a className="btn btn-secondary btn-sm" data-testid="export-harvested" download
+                  href={`${api}/harvested.csv?as_of=${iso}&days=${days}`}><Icon name="download" /> {t(lang, "exportList")}</a>
               </div>
               <p className="muted small ops-help">{t(lang, "harvestedHelp", { days })}</p>
               <Paged lang={lang} list={harvested} empty={t(lang, "emptyHarvested")} fields={fields}
@@ -263,8 +264,8 @@ export default function OpsView({ site, day, onDay, lang, onLang }: Props) {
             <div data-testid="ops-not-detected" data-state={notDetected.load.state}>
               <div className="ops-list-head">
                 <p className="muted small ops-help">{t(lang, "notDetectedHelp")}</p>
-                <a className="zoom ops-export" data-testid="export-not-detected" download
-                  href={`${api}/not-detected.csv?as_of=${iso}`}>{t(lang, "exportList")}</a>
+                <a className="btn btn-secondary btn-sm" data-testid="export-not-detected" download
+                  href={`${api}/not-detected.csv?as_of=${iso}`}><Icon name="download" /> {t(lang, "exportList")}</a>
               </div>
               <Paged lang={lang} list={notDetected} empty={t(lang, "emptyNotDetected")} fields={fields}
                 head={
@@ -284,9 +285,12 @@ export default function OpsView({ site, day, onDay, lang, onLang }: Props) {
 
           {tab === "fires" && (
             <div data-testid="ops-fires" data-state={fires.state}>
-              <p className="note small" data-testid="ops-fire-text">{t(lang, "fireText")}</p>
+              <p className="note" data-testid="ops-fire-text">
+                <Icon name="info" className="note-icon" />
+                <span>{t(lang, "fireText")}</span>
+              </p>
               {fires.state === "error" && <p className="error">{t(lang, "loadError", { msg: fires.message })}</p>}
-              {fires.state === "loading" && <p className="muted">{t(lang, "loading")}</p>}
+              {fires.state === "loading" && <Skeleton lines={6} label={t(lang, "loading")} />}
               {f && (
                 <>
                   <p className="muted small ops-help" data-testid="ops-fire-summary">
@@ -294,10 +298,10 @@ export default function OpsView({ site, day, onDay, lang, onLang }: Props) {
                       from: date(f.from), to: date(f.to), night: n(f.night) })}
                   </p>
                   {f.rows.length === 0 ? (
-                    <p className="muted" data-testid="ops-empty">{t(lang, "emptyFires")}</p>
+                    <EmptyState testId="ops-empty" title={t(lang, "emptyFires")} />
                   ) : (
                     <div className="ops-table-wrap">
-                      <table className="ops-table" data-testid="ops-table">
+                      <table className="table ops-table" data-testid="ops-table">
                         <thead>
                           <tr>
                             <th>{t(lang, "colTime")}</th>
@@ -327,7 +331,8 @@ export default function OpsView({ site, day, onDay, lang, onLang }: Props) {
             </div>
           )}
         </section>
-        <OpsMap site={site} day={day} days={days} focus={focus} fires={f?.rows ?? []} lang={lang} />
+        <OpsMap site={site} day={day} days={days} focus={focus} fires={f?.rows ?? []} lang={lang}
+          tip={<InfoTip text={t(lang, "tipMap")} label={t(lang, "whatIsThis")} />} />
       </div>
     </div>
   );
@@ -346,19 +351,19 @@ function Paged<R>({ lang, list, empty, fields, head, row }: {
   const { load, rows, total, more, loadMore } = list;
   const n = (v: number) => formatNumber(lang, v);
   if (load.state === "error") return <p className="error">{t(lang, "loadError", { msg: load.message })}</p>;
-  if (load.state === "loading") return <p className="muted">{t(lang, "loading")}</p>;
-  if (!total) return <p className="muted" data-testid="ops-empty">{empty}</p>;
+  if (load.state === "loading") return <Skeleton lines={8} label={t(lang, "loading")} />;
+  if (!total) return <EmptyState testId="ops-empty" title={empty} />;
   return (
     <>
       <p className="muted small" data-testid="ops-count">{t(lang, "rowsShown", { shown: n(rows.length), total: fields(total) })}</p>
       <div className="ops-table-wrap">
-        <table className="ops-table" data-testid="ops-table">
+        <table className="table ops-table" data-testid="ops-table">
           <thead>{head}</thead>
           <tbody>{rows.map(row)}</tbody>
         </table>
       </div>
       {rows.length < total && (
-        <button type="button" className="zoom more" data-testid="ops-more" disabled={more} onClick={loadMore}>
+        <button type="button" className="btn btn-secondary more" data-testid="ops-more" disabled={more} onClick={loadMore}>
           {more ? t(lang, "loading") : t(lang, "loadMore", { n: n(total - rows.length) })}
         </button>
       )}
@@ -366,10 +371,21 @@ function Paged<R>({ lang, list, empty, fields, head, row }: {
   );
 }
 
-function Card({ label, value, note, sub, testId }: { label: string; value: string; note?: string; sub?: string; testId?: string }) {
+function Card({ label, value, note, sub, testId, tip, lang }: {
+  label: string;
+  value: string;
+  note?: string;
+  sub?: string;
+  testId?: string;
+  tip: Key;
+  lang: Lang;
+}) {
   return (
     <div className="ops-card" data-testid={testId}>
-      <div className="ops-card-label">{label}</div>
+      <div className="ops-card-label">
+        <span>{label}</span>
+        <InfoTip text={t(lang, tip)} label={t(lang, "whatIsThis")} />
+      </div>
       <div className="ops-card-value">{value}</div>
       {note && <div className="ops-card-note">{note}</div>}
       {sub && <div className="ops-card-note">{sub}</div>}

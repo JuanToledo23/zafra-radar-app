@@ -3,7 +3,9 @@ import type { Site } from "./App";
 import { linearScale, monthLabel, monthTicks, nearestIndex, niceTicks, pearson } from "./chartScale";
 import { FIRE_COLOR, GRID_COLOR, HARVEST_COLOR, MARKER_COLOR, OFFICIAL_COLOR, REFERENCE_COLOR } from "./colors";
 import { fromDay, toDay } from "./season";
+import { Icon } from "./icons";
 import { MarkerShape, SeriesSwatch, type Marker } from "./TimeSeriesChart";
+import { Skeleton, TitleTip } from "./ui";
 
 // GET /weekly/{site} (docs/API.md).
 export type WeekRow = { week_start: string; harvests: number; fires_all: number; fires_cane: number };
@@ -333,9 +335,9 @@ function CumulativeChart({ cum, xDomain, markerDay, onPick }: ChartProps & { cum
 
 function KeyNumber({ value, label }: { value: string; label: string }) {
   return (
-    <div>
+    <div className="stat">
       <div className="key-value">{value}</div>
-      <div className="muted small">{label}</div>
+      <div className="stat-label">{label}</div>
     </div>
   );
 }
@@ -376,14 +378,14 @@ export default function SeasonPanel({ site, weekly, sliderDay, expanded, onPick,
     >
       <div className="season-head">
         <h2>
-          Season progress · {site.name.split(",")[0]} {site.season}
+          Season progress <span className="season-site">· {site.name.split(",")[0]} {site.season}</span>
         </h2>
         <div className="season-buttons">
-          <button type="button" className="zoom" aria-expanded={expanded} data-testid="season-size" onClick={onToggleSize}>
-            {expanded ? "Collapse" : "Expand"}
+          <button type="button" className="btn btn-secondary btn-sm" aria-expanded={expanded} data-testid="season-size" onClick={onToggleSize}>
+            <Icon name={expanded ? "collapse" : "expand"} /> {expanded ? "Collapse" : "Expand"}
           </button>
-          <button type="button" className="zoom" onClick={onClose}>
-            Close
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
+            <Icon name="close" /> Close
           </button>
         </div>
       </div>
@@ -407,31 +409,40 @@ export default function SeasonPanel({ site, weekly, sliderDay, expanded, onPick,
         )}
       </div>
       {!weekly ? (
-        <p className="muted">Loading weekly data…</p>
+        <Skeleton lines={4} label="Loading weekly data…" />
       ) : !weeks.length ? (
         <p className="muted">No weekly data for this site</p>
       ) : (
         <div className={`season-body${cum ? " two" : ""}`}>
           <div className="season-col">
-            <div className="chart-legend">
-              <span>
-                <MarkerSwatch /> Time slider week
-              </span>
-              {firesCane < MIN_FIRES_FOR_R ? (
-                <span className="season-r" data-testid="pearson">
-                  Only {int(firesCane)} fires in cane this season: too few for a meaningful correlation.
+            <div className="season-col-head">
+              <TitleTip tip="Each week, the field segments the radar dated as harvested (top) and the satellite fire detections near cane (bottom). Click a week to move the timeline there.">
+                Harvests and fires per week
+              </TitleTip>
+              <div className="chart-legend">
+                <span>
+                  <MarkerSwatch /> Time slider week
                 </span>
-              ) : (
-                <span className="season-r" data-testid="pearson">
-                  Pearson r, weekly detected harvests vs weekly VIIRS fires within 200 m of cane (same week, {weeks.length}{" "}
-                  weeks shown): <strong>{Number.isNaN(r) ? "n/a" : r.toFixed(2)}</strong>
-                </span>
-              )}
+              </div>
             </div>
             <WeeklyBars weeks={weeks} xDomain={xDomain} markerDay={markerDay} onPick={onPick} />
+            {firesCane < MIN_FIRES_FOR_R ? (
+              <p className="season-note" data-testid="pearson">
+                Only {int(firesCane)} fires in cane this season: too few for a meaningful correlation.
+              </p>
+            ) : (
+              <p className="season-note" data-testid="pearson">
+                Pearson r, weekly detected harvests vs weekly VIIRS fires within 200 m of cane (same week, {weeks.length}{" "}
+                weeks shown): <strong>{Number.isNaN(r) ? "n/a" : r.toFixed(2)}</strong>
+              </p>
+            )}
           </div>
           {cum && (
             <div className="season-col">
+              <div className="season-col-head">
+              <TitleTip tip="Share of the season's area harvested so far, by the radar and in the mill's official weekly reports, at each weekly cut-off.">
+                Radar vs mill reports, cumulative
+              </TitleTip>
               <div className="chart-legend">
                 {CUM_SERIES.map((s) => (
                   <span key={s.key}>
@@ -447,6 +458,7 @@ export default function SeasonPanel({ site, weekly, sliderDay, expanded, onPick,
                 <span>
                   <MarkerSwatch /> Time slider week
                 </span>
+              </div>
               </div>
               <CumulativeChart cum={cum} xDomain={xDomain} markerDay={markerDay} onPick={onPick} />
               <p className="season-note muted">

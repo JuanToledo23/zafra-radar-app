@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import type { Site } from "./App";
 import { niceTicks } from "./chartScale";
 import { COHERENCE_COLOR, FIRE_COLOR, HARVEST_COLOR, ORBIT_COLORS, REFERENCE_COLOR } from "./colors";
+import { Icon } from "./icons";
 import { toDay } from "./season";
 import TimeSeriesChart, { SeriesSwatch, type ChartSeries } from "./TimeSeriesChart";
+import { EmptyState, Segmented, Skeleton, TitleTip } from "./ui";
 
 // GET /segments/{site}/{segment_id} (docs/API.md).
 type SeriesRow = { date: string; hv_db: number | null; hh_db: number | null };
@@ -170,11 +172,17 @@ function Charts({ d, site }: { d: SegmentDetail; site: Site }) {
           Coherence {COHERENCE_REF} reference
         </span>
       </div>
-      <h3>HV backscatter</h3>
+      <TitleTip as="h3" tip="How strongly the field sends back the radar's cross-polarised (HV) signal: high over standing cane, it usually drops sharply when the cane is cut.">
+        Radar signal (HV backscatter)
+      </TitleTip>
       <TimeSeriesChart {...common} yTitle="HV (dB)" unit="dB" yTicks={ticksFor(hv, [-25, -10])} series={hv} format={db} />
-      <h3>HH backscatter</h3>
+      <TitleTip as="h3" tip="The radar's co-polarised (HH) signal from the same passes; it depends more on the soil surface than HV does.">
+        Radar signal (HH backscatter)
+      </TitleTip>
       <TimeSeriesChart {...common} yTitle="HH (dB)" unit="dB" yTicks={ticksFor(hh, [-15, 0])} series={hh} format={db} />
-      <h3>Interferometric coherence</h3>
+      <TitleTip as="h3" tip="How alike two consecutive radar passes are, from 0 to 1; a field that is cut or disturbed between the passes loses coherence.">
+        Similarity between passes (interferometric coherence)
+      </TitleTip>
       <TimeSeriesChart
         {...common}
         yTitle="Coherence (0–1)"
@@ -191,19 +199,19 @@ function Charts({ d, site }: { d: SegmentDetail; site: Site }) {
 
 export function Summary({ summary }: { summary: SegmentDetail["summary"] }) {
   const [lang, setLang] = useState<"en" | "es">("en");
-  if (!summary) return <p className="muted">No summary for this field yet</p>;
+  if (!summary) return <EmptyState title="No summary for this field yet" />;
   const s = summary[lang];
   return (
     <>
       <div className="summary-bar">
-        <div className="toggle" role="group" aria-label="Summary language">
-          {(["en", "es"] as const).map((l) => (
-            <button key={l} type="button" aria-pressed={lang === l} className={lang === l ? "on" : ""} onClick={() => setLang(l)}>
-              {l.toUpperCase()}
-            </button>
-          ))}
-        </div>
-        <span className="source-label">{SOURCES[s.source] ?? s.source}</span>
+        <Segmented
+          label="Summary language"
+          size="sm"
+          value={lang}
+          onChange={setLang}
+          options={(["en", "es"] as const).map((l) => ({ value: l, label: l.toUpperCase() }))}
+        />
+        <span className="pill">{SOURCES[s.source] ?? s.source}</span>
       </div>
       <p className="summary-text" lang={lang}>
         {s.text}
@@ -221,7 +229,7 @@ function Fires({ fires, buffer }: { fires: Fire[]; buffer: number }) {
         <strong>{fires.length}</strong> fire detection{fires.length === 1 ? "" : "s"} within {buffer} m
       </p>
       {fires.length > 0 && (
-        <table className="fires">
+        <table className="table table-compact fires">
           <thead>
             <tr>
               <th>Local time</th>
@@ -258,13 +266,15 @@ function Detail({ d, site, onZoom }: { d: SegmentDetail; site: Site; onZoom: (bb
             {d.area_ha.toFixed(2)} ha · {STATUS[d.status] ?? d.status}
           </div>
         </div>
-        <button type="button" className="zoom" onClick={() => onZoom(d.bbox)}>
-          Zoom to field
+        <button type="button" className="btn btn-secondary btn-sm zoom" onClick={() => onZoom(d.bbox)}>
+          <Icon name="target" /> Zoom to field
         </button>
       </div>
 
       <section className="block" data-testid="harvest">
-        <h3>Harvest</h3>
+        <TitleTip tip="The harvest date the radar gives this field; the ± range comes from the time between the radar passes around the cut.">
+          Harvest
+        </TitleTip>
         {d.harvest_date ? (
           <p className="harvest-date">
             {d.harvest_date}
@@ -290,13 +300,15 @@ function Detail({ d, site, onZoom }: { d: SegmentDetail; site: Site; onZoom: (bb
           </tbody>
         </table>
         <div className="key-numbers">
-          <div>
+          <div className="stat">
             <div className="key-value">{num(d.hv_drop_db, 2)} dB</div>
-            <div className="muted small">{d.harvest_date ? "HV drop at harvest" : "Largest HV drop"}</div>
+            <div className="stat-label">
+              {d.harvest_date ? "Radar signal drop at harvest (HV drop)" : "Largest radar signal drop (HV drop)"}
+            </div>
           </div>
-          <div>
+          <div className="stat">
             <div className="key-value">{num(d.coh_min, 2)}</div>
-            <div className="muted small">Minimum coherence</div>
+            <div className="stat-label">Lowest similarity between passes (minimum coherence)</div>
           </div>
         </div>
         {disagree && <p className="note">Radar and optical disagree on whether this field is cane.</p>}
@@ -304,17 +316,23 @@ function Detail({ d, site, onZoom }: { d: SegmentDetail; site: Site; onZoom: (bb
       </section>
 
       <section className="block">
-        <h3>Summary</h3>
+        <TitleTip tip="A short text about this field from its facts, in English or Spanish; the label says whether an LLM wrote it (then verified) or a template.">
+          Summary
+        </TitleTip>
         <Summary key={d.segment_id} summary={d.summary} />
       </section>
 
       <section className="block">
-        <h3>Radar time series</h3>
+        <TitleTip tip="Every radar pass over this field during the season, on one date axis, with the detected harvest date marked.">
+          Radar signal over the season (time series)
+        </TitleTip>
         <Charts d={d} site={site} />
       </section>
 
       <section className="block">
-        <h3>Fires</h3>
+        <TitleTip tip={`Satellite (VIIRS) fire detections within ${d.fire_buffer_m} m of this field; a fire detected near a field is often a neighbouring field's.`}>
+          Fires
+        </TitleTip>
         <Fires fires={d.fires} buffer={d.fire_buffer_m} />
       </section>
 
@@ -340,8 +358,8 @@ export default function FieldDetail({ site, segmentId, onZoom }: Props) {
   const load = useSegment(site.site_id, segmentId);
   return (
     <div className="field" data-testid="field-detail" data-state={load.state}>
-      {load.state === "loading" && <p className="muted">Loading {segmentId}…</p>}
-      {load.state === "not-found" && <p className="muted">Segment {segmentId} was not found for this site.</p>}
+      {load.state === "loading" && <Skeleton lines={6} label={`Loading ${segmentId}…`} />}
+      {load.state === "not-found" && <EmptyState icon="search" title={`Segment ${segmentId} was not found for this site.`} />}
       {load.state === "error" && <p className="error">Could not load {segmentId}: {load.message}</p>}
       {load.state === "ok" && <Detail d={load.data} site={site} onZoom={onZoom} />}
     </div>

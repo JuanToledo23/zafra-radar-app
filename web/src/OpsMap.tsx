@@ -1,5 +1,5 @@
 import maplibregl from "maplibre-gl";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Site } from "./App";
 import { BASEMAP_LAYER, BASEMAP_SOURCE, probeBasemap } from "./basemap";
 import { t, type Lang } from "./i18n";
@@ -35,6 +35,7 @@ type Props = {
   focus: OpsFocus | null;
   fires: FireRow[];
   lang: Lang;
+  tip?: ReactNode;
 };
 
 // Tiles of the operations map as of a date: they carry only the harvest dates on or before it.
@@ -77,7 +78,7 @@ function addSegmentLayers(map: maplibregl.Map, tiles: string) {
 /** Map of the mill operations screen as of `day`: fields harvested in the last `days` days
  * highlighted, harvested earlier muted, not yet detected as harvested in one colour, and the
  * last 7 days' fire detections near cane as points (context, not attributed to a field). */
-export default function OpsMap({ site, day, days, focus, fires, lang }: Props) {
+export default function OpsMap({ site, day, days, focus, fires, lang, tip }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -91,7 +92,7 @@ export default function OpsMap({ site, day, days, focus, fires, lang }: Props) {
       fitBoundsOptions: { padding: 30 },
       attributionControl: { compact: true },
     });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
     map.on("error", (e) => {
       if ((e as { sourceId?: string }).sourceId === BASEMAP_SOURCE && map.getLayer(BASEMAP_LAYER))
@@ -157,13 +158,15 @@ export default function OpsMap({ site, day, days, focus, fires, lang }: Props) {
     map.setFilter(FOCUS, focus?.id ? ["==", ["get", "segment_id"], focus.id] : NONE);
     if (!focus) return;
     const [x, y] = focus.centroid;
-    map.fitBounds([x - FOCUS_DEG, y - FOCUS_DEG, x + FOCUS_DEG, y + FOCUS_DEG], { maxZoom: 16 });
+    const animate = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    map.fitBounds([x - FOCUS_DEG, y - FOCUS_DEG, x + FOCUS_DEG, y + FOCUS_DEG], { maxZoom: 16, animate });
   }, [loaded, tilesDay, focus]);
 
   return (
     <div className="ops-map-wrap">
       <div ref={container} className="map" data-testid="ops-map" />
       <div className="ops-legend" data-testid="ops-legend">
+        {tip && <div className="ops-legend-tip">{tip}</div>}
         <div className="legend-item">
           <span className="swatch" style={{ background: RECENT_COLOR }} /> {t(lang, "mapRecent", { days })}
         </div>

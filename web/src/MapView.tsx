@@ -67,6 +67,7 @@ const CLIP_LEFT = "radar-clip-left";
 const CLIP_RIGHT = "radar-clip-right";
 const CLIP_OFF = "radar-clip-off";
 const rasterUrl = (path: string) => `${window.location.origin}/api${path}`;
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const hovered = (yes: unknown, no: unknown) => ["case", ["boolean", ["feature-state", "hover"], false], yes, no];
 
 /** Custom layer that clips what follows to one side of the divider (`split()`, 0..1 of the
@@ -225,7 +226,8 @@ export default function MapView({
       zoom: 10,
       attributionControl: { compact: true },
     });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
+    // top right: the map layers panel sits top left
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
     map.on("zoomend", () => setZoom(map.getZoom()));
 
@@ -464,7 +466,7 @@ export default function MapView({
     const map = mapRef.current;
     if (!loaded || !map || !zoomTo) return;
     const [w, s, e, n] = zoomTo.bbox;
-    map.fitBounds([w, s, e, n], { padding: 80, maxZoom: 17 });
+    map.fitBounds([w, s, e, n], { padding: 80, maxZoom: 17, animate: !reducedMotion() });
   }, [loaded, zoomTo]);
 
   const moveDivider = (e: PointerEvent<HTMLDivElement>) => {
