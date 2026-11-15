@@ -1,3 +1,4 @@
+import { formatDate, t, type Lang } from "./i18n";
 import { fromDay, toDay } from "./season";
 
 // NISAR raster layers of GET /rasters/{site} (docs/API.md) and the pure choices of the
@@ -52,13 +53,30 @@ export const DEFAULT_RADAR: RadarSettings = {
   product: "HV",
   date: null,
   changeId: null,
-  follow: false,
+  follow: true,
   left: null,
   right: null,
   rightChange: false,
   opacity: 1,
-  outlines: true,
+  outlines: false,
 };
+
+// The explorer's three map views, one per radar mode: the harvest map (no imagery), the HV
+// image following the timeline, and the first against the last acquisition.
+export type MapViewKind = "harvest" | "radar" | "compare";
+export const viewOf = (s: RadarSettings): MapViewKind => (s.mode === "off" ? "harvest" : s.mode === "single" ? "radar" : "compare");
+
+/** The settings a click on a view sets; More options can change them afterwards. */
+export function viewPreset(view: MapViewKind, index: RasterIndex | null, s: RadarSettings): RadarSettings {
+  if (view === "harvest" || !index) return { ...s, mode: "off" };
+  const base = { ...s, product: "HV" as Product, opacity: 1, outlines: false };
+  if (view === "radar") return { ...base, mode: "single", follow: true };
+  return { ...base, mode: "compare", left: index.dates[0], right: index.dates.at(-1) ?? null, rightChange: false };
+}
+
+/** True when compare mode shows the HV image of the first and of the last acquisition. */
+export const isSeasonCompare = (index: RasterIndex | null, s: RadarSettings) =>
+  !!index && s.mode === "compare" && s.product === "HV" && !s.rightChange && s.left === index.dates[0] && s.right === index.dates.at(-1);
 
 // What the map draws: `left` alone in single-date mode; in compare mode `left` west of the
 // divider and `right` east of it. `note` explains an empty map (follow before the first date).
@@ -81,18 +99,21 @@ export function latestOnOrBefore(dates: string[], day: number): string | null {
   return dates.filter((d) => toDay(d) <= day).sort().at(-1) ?? null;
 }
 
-export function changeName(l: RasterLayer): string {
+export function changeName(lang: Lang, l: RasterLayer): string {
   if (!l.date_pair) return l.id;
-  return l.season ? `Season: lowest HV minus ${l.date_pair[0]}` : `${l.date_pair[0]} → ${l.date_pair[1]}`;
+  const [a, b] = l.date_pair.map((d) => formatDate(lang, d));
+  return l.season ? t(lang, "changeSeason", { date: a }) : `${a} → ${b}`;
 }
 
 /** Date(s) a layer shows, for the on-screen labels. */
-export function layerDates(l: RasterLayer): string {
-  if (l.date) return l.date;
-  return l.season ? `${l.date_pair![0]} … ${l.date_pair![1]}, lowest minus first` : changeName(l);
+export function layerDates(lang: Lang, l: RasterLayer): string {
+  if (l.date) return formatDate(lang, l.date);
+  return l.season
+    ? t(lang, "seasonDates", { a: formatDate(lang, l.date_pair![0]), b: formatDate(lang, l.date_pair![1]) })
+    : changeName(lang, l);
 }
 
-export function resolveRadar(index: RasterIndex | null, s: RadarSettings, day: number | null): RadarView | null {
+export function resolveRadar(lang: Lang, index: RasterIndex | null, s: RadarSettings, day: number | null): RadarView | null {
   if (!index || s.mode === "off") return null;
   if (s.mode === "compare") {
     const left = imageLayer(index, s.product === "change" ? "HV" : s.product, s.left);
@@ -104,14 +125,14 @@ export function resolveRadar(index: RasterIndex | null, s: RadarSettings, day: n
   if (s.product === "change") {
     if (!s.follow || day === null) return { left: changeLayers(index).find((l) => l.id === s.changeId) ?? null, right: null, note: null };
     const layer = pairChanges(index).filter((l) => toDay(l.date_pair![1]) <= day).at(-1) ?? null;
-    return { left: layer, right: null, note: layer ? null : `No change pair ends on or before ${fromDay(day)}.` };
+    return { left: layer, right: null, note: layer ? null : t(lang, "noPair", { date: formatDate(lang, fromDay(day)) }) };
   }
   if (!s.follow || day === null) return { left: imageLayer(index, s.product, s.date), right: null, note: null };
   const date = latestOnOrBefore(index.dates, day);
   return {
     left: imageLayer(index, s.product, date),
     right: null,
-    note: date ? null : `No acquisition on or before ${fromDay(day)} (first: ${index.dates[0]}).`,
+    note: date ? null : t(lang, "noAcquisition", { date: formatDate(lang, fromDay(day)), first: formatDate(lang, index.dates[0]) }),
   };
 }
 

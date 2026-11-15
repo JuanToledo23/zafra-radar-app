@@ -1,6 +1,7 @@
 import { useId, useState, type PointerEvent } from "react";
 import { linearScale, monthLabel, monthTicks, nearestIndex } from "./chartScale";
 import { FIRE_COLOR, GRID_COLOR, HARVEST_COLOR, REFERENCE_COLOR } from "./colors";
+import { formatDate, t, useLang } from "./i18n";
 import { fromDay } from "./season";
 
 export type Marker = "circle" | "square" | "diamond";
@@ -54,6 +55,7 @@ export function SeriesSwatch({ color, marker, dash }: { color: string; marker: M
 }
 
 export default function TimeSeriesChart(p: Props) {
+  const lang = useLang();
   const clipId = `clip${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const [hover, setHover] = useState<number | null>(null);
 
@@ -83,18 +85,18 @@ export default function TimeSeriesChart(p: Props) {
       <div className="readout" aria-live="polite">
         {h ? (
           <>
-            <strong>{fromDay(h.pt.day)}</strong> · {h.s.label}: {p.format(h.pt.value)} {p.unit}
+            <strong>{formatDate(lang, fromDay(h.pt.day))}</strong> · {h.s.label}: {p.format(h.pt.value)} {p.unit}
             {h.pt.note && <span className="muted"> ({h.pt.note})</span>}
           </>
         ) : (
-          <span className="muted">{flat.length ? "Hover the chart for values" : ""}</span>
+          <span className="muted">{flat.length ? t(lang, "hoverValues") : ""}</span>
         )}
       </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         width="100%"
         role="img"
-        aria-label={`${p.yTitle} over time`}
+        aria-label={t(lang, "overTime", { y: p.yTitle })}
         onPointerMove={onMove}
         onPointerLeave={() => setHover(null)}
       >
@@ -179,7 +181,7 @@ export default function TimeSeriesChart(p: Props) {
 
         {!flat.length && (
           <text x={(M.left + W - M.right) / 2} y={M.top + PLOT_H / 2} className="tick" textAnchor="middle">
-            No data for this field
+            {t(lang, "noData")}
           </text>
         )}
 
@@ -193,14 +195,14 @@ export default function TimeSeriesChart(p: Props) {
             stroke="#fff"
             strokeWidth={0.6}
           >
-            <title>Fire {fromDay(d)}</title>
+            <title>{t(lang, "fireOn", { date: formatDate(lang, fromDay(d)) })}</title>
           </path>
         ))}
 
         {p.xLabels && (
           <>
             {months.map((d, i) => {
-              const [m, yr] = monthLabel(d, i === 0);
+              const [m, yr] = monthLabel(lang, d, i === 0);
               return (
                 <text key={`l${d}`} x={x(d)} y={plotBottom + AXIS_GAP + 6} className="tick" textAnchor="middle">
                   <tspan x={x(d)}>{m}</tspan>
@@ -213,7 +215,7 @@ export default function TimeSeriesChart(p: Props) {
               );
             })}
             <text x={(M.left + W - M.right) / 2} y={H - 2} className="axis-title" textAnchor="middle">
-              Acquisition date
+              {t(lang, "acquisitionDate")}
             </text>
           </>
         )}

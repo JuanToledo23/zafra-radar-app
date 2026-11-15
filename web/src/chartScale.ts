@@ -1,9 +1,8 @@
+import { formatMonth, type Lang } from "./i18n";
 import { fromDay } from "./season";
 
 // Pure scale and tick helpers for the hand-written SVG charts. Days are integers counted
 // from 1970-01-01 (UTC), as in season.ts.
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** Linear map from `domain` to `range`; a zero-width domain maps to the middle of the range. */
 export function linearScale([d0, d1]: [number, number], [r0, r1]: [number, number]) {
@@ -57,10 +56,10 @@ export function monthTicks(minDay: number, maxDay: number): number[] {
 }
 
 /** Month tick label: the month abbreviation, and the year under the first tick and January. */
-export function monthLabel(day: number, first: boolean): [string, string | null] {
+export function monthLabel(lang: Lang, day: number, first: boolean): [string, string | null] {
   const d = new Date(fromDay(day));
   const m = d.getUTCMonth();
-  return [MONTHS[m], first || m === 0 ? String(d.getUTCFullYear()) : null];
+  return [formatMonth(lang, fromDay(day)), first || m === 0 ? String(d.getUTCFullYear()) : null];
 }
 
 /** Index of the point nearest (x, y) by squared distance, or -1 for an empty list. */

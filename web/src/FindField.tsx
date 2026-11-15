@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Selection } from "./App";
+import { t, useLang } from "./i18n";
 import { Icon } from "./icons";
 import type { ReferenceCollection } from "./reference";
 
@@ -12,6 +13,7 @@ type Props = {
 
 /** Header box: a reference field id (p36) or a segment id (cc20456) of the current site. */
 export default function FindField({ siteId, reference, onFound }: Props) {
+  const lang = useLang();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"idle" | "searching" | "not-found">("idle");
 
@@ -45,8 +47,8 @@ export default function FindField({ siteId, reference, onFound }: Props) {
       <input
         className="input"
         type="search"
-        aria-label="Find field"
-        placeholder="Find field (p36, cc20456)"
+        aria-label={t(lang, "findField")}
+        placeholder={t(lang, "findPlaceholder")}
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
@@ -54,11 +56,11 @@ export default function FindField({ siteId, reference, onFound }: Props) {
         }}
       />
       <button type="submit" className="btn btn-secondary btn-sm" disabled={status === "searching"}>
-        Find
+        {t(lang, "find")}
       </button>
       {status === "not-found" && (
         <span className="find-status" role="status" data-testid="find-status">
-          Not found
+          {t(lang, "notFound")}
         </span>
       )}
     </form>

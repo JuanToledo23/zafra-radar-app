@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { Site } from "./App";
 import { linearScale, monthLabel, monthTicks, nearestIndex, niceTicks, pearson } from "./chartScale";
 import { FIRE_COLOR, GRID_COLOR, HARVEST_COLOR, MARKER_COLOR, OFFICIAL_COLOR, REFERENCE_COLOR } from "./colors";
+import { formatDate, formatNumber, t, tValue, useLang, type Key, type Lang } from "./i18n";
 import { fromDay, toDay } from "./season";
 import { Icon } from "./icons";
 import { MarkerShape, SeriesSwatch, type Marker } from "./TimeSeriesChart";
@@ -38,13 +39,14 @@ const X_LABELS_H = 36; // month line, year line and the x axis title
 const MIN_LABEL_GAP = 14; // px between the axis start and the first month label
 const LEVELS = [25, 50, 75];
 const MIN_FIRES_FOR_R = 30; // fewer fires in cane over the weeks shown: r is not displayed
-const CUM_SERIES: { key: "detected" | "official"; label: string; color: string; marker: Marker; dash?: string }[] = [
-  { key: "detected", label: "Detected (radar)", color: HARVEST_COLOR, marker: "square", dash: "5 3" },
-  { key: "official", label: "Official (mill reports)", color: OFFICIAL_COLOR, marker: "circle" },
+const CUM_SERIES: { key: "detected" | "official"; label: Key; color: string; marker: Marker; dash?: string }[] = [
+  { key: "detected", label: "seriesDetected", color: HARVEST_COLOR, marker: "square", dash: "5 3" },
+  { key: "official", label: "seriesOfficial", color: OFFICIAL_COLOR, marker: "circle" },
 ];
 
-const ha = (v: number) => `${Math.round(v).toLocaleString("en-US")} ha`;
-const int = (v: number) => v.toLocaleString("en-US");
+const ha = (lang: Lang, v: number) => `${formatNumber(lang, Math.round(v))} ha`;
+const int = (lang: Lang, v: number) => formatNumber(lang, v);
+const date = (lang: Lang, iso: string) => formatDate(lang, iso);
 
 /** Pixel size of an element, kept up to date with a ResizeObserver. */
 function useSize<T extends HTMLElement>() {
@@ -62,13 +64,14 @@ function useSize<T extends HTMLElement>() {
 
 /** Month grid labels and the x axis title under a plot ending at `bottom`. */
 function MonthAxis({ x, xDomain, bottom, title }: { x: (d: number) => number; xDomain: [number, number]; bottom: number; title: string }) {
+  const lang = useLang();
   // A month starting within a few days of the axis start would collide with the y tick "0".
   const months = monthTicks(xDomain[0], xDomain[1]).filter((d) => x(d) - x(xDomain[0]) >= MIN_LABEL_GAP);
   return (
     <>
       <line x1={x(xDomain[0])} x2={x(xDomain[1])} y1={bottom} y2={bottom} stroke="#8c959f" />
       {months.map((d, i) => {
-        const [m, yr] = monthLabel(d, i === 0);
+        const [m, yr] = monthLabel(lang, d, i === 0);
         return (
           <text key={d} x={x(d)} y={bottom + 11} className="tick" textAnchor="middle">
             <tspan x={x(d)}>{m}</tspan>
@@ -110,16 +113,17 @@ type ChartProps = { xDomain: [number, number]; markerDay: number | null; onPick:
 
 /** Two bar panels on one weekly x axis: detected harvests on top, fires in cane below. */
 function WeeklyBars({ weeks, xDomain, markerDay, onPick }: ChartProps & { weeks: WeekRow[] }) {
+  const lang = useLang();
   const [ref, { w, h }] = useSize<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const first = toDay(weeks[0].week_start);
   const x = linearScale(xDomain, [AX.left, w - AX.right]);
   const panelH = Math.max((h - AX.top - 2 * TITLE_H - PANEL_GAP - X_LABELS_H) / 2, 16);
   const panels = [
-    { key: "harvests", title: "Detected harvests (segments per week)", color: HARVEST_COLOR, values: weeks.map((r) => r.harvests) },
+    { key: "harvests", title: t(lang, "barsHarvests"), color: HARVEST_COLOR, values: weeks.map((r) => r.harvests) },
     {
       key: "fires",
-      title: "VIIRS fires within 200 m of cane (detections per week)",
+      title: t(lang, "barsFires"),
       color: FIRE_COLOR,
       values: weeks.map((r) => r.fires_cane),
     },
@@ -146,12 +150,12 @@ function WeeklyBars({ weeks, xDomain, markerDay, onPick }: ChartProps & { weeks:
         {hw ? (
           <>
             <strong>
-              Week {hw.week_start} – {fromDay(toDay(hw.week_start) + 6)}
+              {t(lang, "weekReadout", { from: date(lang, hw.week_start), to: date(lang, fromDay(toDay(hw.week_start) + 6)) })}
             </strong>{" "}
-            · {int(hw.harvests)} harvests detected · {int(hw.fires_cane)} fires within 200 m of cane
+            {t(lang, "weekReadoutValues", { h: int(lang, hw.harvests), f: int(lang, hw.fires_cane) })}
           </>
         ) : (
-          <span className="muted">Hover a week for values; click it to move the time slider</span>
+          <span className="muted">{t(lang, "hoverWeek")}</span>
         )}
       </div>
       <div className="season-plot" ref={ref}>
@@ -160,7 +164,7 @@ function WeeklyBars({ weeks, xDomain, markerDay, onPick }: ChartProps & { weeks:
             width={w}
             height={h}
             role="img"
-            aria-label="Detected harvests and fires within 200 m of cane per week"
+            aria-label={t(lang, "barsAria")}
             data-testid="weekly-chart"
             onPointerMove={(e) => setHover(weekAt(e))}
             onPointerLeave={() => setHover(null)}
@@ -178,7 +182,7 @@ function WeeklyBars({ weeks, xDomain, markerDay, onPick }: ChartProps & { weeks:
                   <g key={t}>
                     <line x1={AX.left} x2={w - AX.right} y1={p.y(t)} y2={p.y(t)} stroke={GRID_COLOR} />
                     <text x={AX.left - 4} y={p.y(t)} className="tick" textAnchor="end" dominantBaseline="middle">
-                      {int(t)}
+                      {int(lang, t)}
                     </text>
                   </g>
                 ))}
@@ -213,7 +217,7 @@ function WeeklyBars({ weeks, xDomain, markerDay, onPick }: ChartProps & { weeks:
             {/* drawn per panel, so it does not cross the lower panel's title */}
             {markerX !== null &&
               panels.map((p, i) => <SliderMarker key={p.key} x={markerX} top={p.top} bottom={p.top + panelH} flag={i === 0} />)}
-            <MonthAxis x={x} xDomain={xDomain} bottom={plotBottom} title="Week (Monday to Sunday)" />
+            <MonthAxis x={x} xDomain={xDomain} bottom={plotBottom} title={t(lang, "weekAxis")} />
           </svg>
         )}
       </div>
@@ -223,6 +227,7 @@ function WeeklyBars({ weeks, xDomain, markerDay, onPick }: ChartProps & { weeks:
 
 /** Detected and official cumulative share of the season area, per official cut-off. */
 function CumulativeChart({ cum, xDomain, markerDay, onPick }: ChartProps & { cum: NonNullable<Weekly["cumulative"]> }) {
+  const lang = useLang();
   const [ref, { w, h }] = useSize<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
   const top = AX.top + 6;
@@ -245,11 +250,17 @@ function CumulativeChart({ cum, xDomain, markerDay, onPick }: ChartProps & { cum
       <div className="readout" aria-live="polite">
         {hr ? (
           <>
-            <strong>Cut-off {hr.cutoff}</strong> (report {hr.report}) · detected {hr.detected_pct.toFixed(1)} % (
-            {ha(hr.detected_cum_ha)}) · official {hr.official_pct.toFixed(1)} % ({ha(hr.official_cum_ha)})
+            <strong>{t(lang, "cutoffReadout", { date: date(lang, hr.cutoff) })}</strong>{" "}
+            {t(lang, "cutoffValues", {
+              r: hr.report,
+              dp: formatNumber(lang, hr.detected_pct, 1),
+              dha: ha(lang, hr.detected_cum_ha),
+              op: formatNumber(lang, hr.official_pct, 1),
+              oha: ha(lang, hr.official_cum_ha),
+            })}
           </>
         ) : (
-          <span className="muted">Hover a cut-off for values; click it to move the time slider</span>
+          <span className="muted">{t(lang, "hoverCutoff")}</span>
         )}
       </div>
       <div className="season-plot" ref={ref}>
@@ -258,7 +269,7 @@ function CumulativeChart({ cum, xDomain, markerDay, onPick }: ChartProps & { cum
             width={w}
             height={h}
             role="img"
-            aria-label="Detected and official cumulative share of the season area"
+            aria-label={t(lang, "cumAria")}
             data-testid="cumulative-chart"
             onPointerMove={(e) => setHover(weekAt(e))}
             onPointerLeave={() => setHover(null)}
@@ -294,7 +305,7 @@ function CumulativeChart({ cum, xDomain, markerDay, onPick }: ChartProps & { cum
               textAnchor="middle"
               dominantBaseline="middle"
             >
-              Cumulative share (%)
+              {t(lang, "cumShare")}
             </text>
             {hr && hover !== null && (
               <line x1={points[hover].x} x2={points[hover].x} y1={top} y2={bottom} stroke={MARKER_COLOR} strokeOpacity={0.35} />
@@ -319,14 +330,14 @@ function CumulativeChart({ cum, xDomain, markerDay, onPick }: ChartProps & { cum
             {markerDay !== null && markerDay >= xDomain[0] && markerDay <= xDomain[1] && (
               <SliderMarker x={x(markerDay)} top={top} bottom={bottom} />
             )}
-            <MonthAxis x={x} xDomain={xDomain} bottom={bottom} title="Official week cut-off (Saturday)" />
+            <MonthAxis x={x} xDomain={xDomain} bottom={bottom} title={t(lang, "cutoffAxis")} />
           </svg>
         )}
       </div>
       {half && (
         <p className="season-note" data-testid="crossing-50">
-          50 % reached (first cut-off at or above 50 %): detected <strong>{half.detected ?? "not reached"}</strong> ·
-          official <strong>{half.official ?? "not reached"}</strong>
+          {t(lang, "crossing")} <strong>{half.detected ? date(lang, half.detected) : t(lang, "notReached")}</strong>{" "}
+          {t(lang, "crossingOfficial")} <strong>{half.official ? date(lang, half.official) : t(lang, "notReached")}</strong>
         </p>
       )}
     </div>
@@ -353,6 +364,7 @@ type Props = {
 };
 
 export default function SeasonPanel({ site, weekly, sliderDay, expanded, onPick, onToggleSize, onClose }: Props) {
+  const lang = useLang();
   const cum = site.has_official ? (weekly?.cumulative ?? null) : null;
   const officialHa = site.official_final?.area_ha ?? cum?.official_total_ha ?? null;
   const weeks = weekly?.weeks ?? [];
@@ -374,97 +386,90 @@ export default function SeasonPanel({ site, weekly, sliderDay, expanded, onPick,
       className={`season${expanded ? " expanded" : ""}`}
       data-testid="season-panel"
       data-expanded={expanded}
-      aria-label="Season progress"
+      aria-label={t(lang, "seasonProgress")}
     >
       <div className="season-head">
         <h2>
-          Season progress <span className="season-site">· {site.name.split(",")[0]} {site.season}</span>
+          {t(lang, "seasonProgress")} <span className="season-site">· {tValue(lang, `short_${site.site_id}`, site.name.split(",")[0])} {site.season}</span>
         </h2>
         <div className="season-buttons">
           <button type="button" className="btn btn-secondary btn-sm" aria-expanded={expanded} data-testid="season-size" onClick={onToggleSize}>
-            <Icon name={expanded ? "collapse" : "expand"} /> {expanded ? "Collapse" : "Expand"}
+            <Icon name={expanded ? "collapse" : "expand"} /> {t(lang, expanded ? "collapse" : "expand")}
           </button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}>
-            <Icon name="close" /> Close
+            <Icon name="close" /> {t(lang, "close")}
           </button>
         </div>
       </div>
       <div className="key-numbers season-numbers" data-testid="season-numbers">
-        <KeyNumber value={ha(site.cane_area_ha)} label="Detected cane area" />
-        <KeyNumber value={int(site.segment_count)} label="Cane segments" />
-        <KeyNumber value={int(site.dated_segment_count)} label="Dated segments" />
-        <KeyNumber value={ha(site.dated_area_ha)} label="Dated area" />
+        <KeyNumber value={ha(lang, site.cane_area_ha)} label={t(lang, "detectedCaneArea")} />
+        <KeyNumber value={int(lang, site.segment_count)} label={t(lang, "caneSegments")} />
+        <KeyNumber value={int(lang, site.dated_segment_count)} label={t(lang, "datedSegments")} />
+        <KeyNumber value={ha(lang, site.dated_area_ha)} label={t(lang, "datedArea")} />
         {site.has_official && officialHa !== null ? (
           <>
             <KeyNumber
-              value={ha(officialHa)}
-              label={`Official mill area${site.official_final?.mill ? ` (${site.official_final.mill})` : ""}`}
+              value={ha(lang, officialHa)}
+              label={`${t(lang, "officialMillArea")}${site.official_final?.mill ? ` (${site.official_final.mill})` : ""}`}
             />
-            <KeyNumber value={`${Math.round((100 * site.cane_area_ha) / officialHa)} %`} label="Detected cane area / official area" />
+            <KeyNumber value={`${Math.round((100 * site.cane_area_ha) / officialHa)} %`} label={t(lang, "detectedVsOfficial")} />
           </>
         ) : (
           <p className="muted season-none" data-testid="no-official">
-            No official mill data for this site
+            {t(lang, "noOfficial")}
           </p>
         )}
       </div>
       {!weekly ? (
-        <Skeleton lines={4} label="Loading weekly data…" />
+        <Skeleton lines={4} label={t(lang, "loadingWeekly")} />
       ) : !weeks.length ? (
-        <p className="muted">No weekly data for this site</p>
+        <p className="muted">{t(lang, "noWeekly")}</p>
       ) : (
         <div className={`season-body${cum ? " two" : ""}`}>
           <div className="season-col">
             <div className="season-col-head">
-              <TitleTip tip="Each week, the field segments the radar dated as harvested (top) and the satellite fire detections near cane (bottom). Click a week to move the timeline there.">
-                Harvests and fires per week
-              </TitleTip>
+              <TitleTip tip={t(lang, "tipHarvestsFires")}>{t(lang, "harvestsFires")}</TitleTip>
               <div className="chart-legend">
                 <span>
-                  <MarkerSwatch /> Time slider week
+                  <MarkerSwatch /> {t(lang, "sliderWeek")}
                 </span>
               </div>
             </div>
             <WeeklyBars weeks={weeks} xDomain={xDomain} markerDay={markerDay} onPick={onPick} />
             {firesCane < MIN_FIRES_FOR_R ? (
               <p className="season-note" data-testid="pearson">
-                Only {int(firesCane)} fires in cane this season: too few for a meaningful correlation.
+                {t(lang, "fewFires", { n: int(lang, firesCane) })}
               </p>
             ) : (
               <p className="season-note" data-testid="pearson">
-                Pearson r, weekly detected harvests vs weekly VIIRS fires within 200 m of cane (same week, {weeks.length}{" "}
-                weeks shown): <strong>{Number.isNaN(r) ? "n/a" : r.toFixed(2)}</strong>
+                {t(lang, "pearson", { n: weeks.length })} <strong>{Number.isNaN(r) ? "n/a" : r.toFixed(2)}</strong>
               </p>
             )}
           </div>
           {cum && (
             <div className="season-col">
               <div className="season-col-head">
-              <TitleTip tip="Share of the season's area harvested so far, by the radar and in the mill's official weekly reports, at each weekly cut-off.">
-                Radar vs mill reports, cumulative
-              </TitleTip>
+              <TitleTip tip={t(lang, "tipRadarVsMill")}>{t(lang, "radarVsMill")}</TitleTip>
               <div className="chart-legend">
                 {CUM_SERIES.map((s) => (
                   <span key={s.key}>
-                    <SeriesSwatch color={s.color} marker={s.marker} dash={s.dash} /> {s.label}
+                    <SeriesSwatch color={s.color} marker={s.marker} dash={s.dash} /> {t(lang, s.label)}
                   </span>
                 ))}
                 <span>
                   <svg width={26} height={10} aria-hidden="true">
                     <line x1={1} x2={25} y1={5} y2={5} stroke={REFERENCE_COLOR} strokeDasharray="2 3" />
                   </svg>{" "}
-                  25 / 50 / 75 %
+                  {t(lang, "levels")}
                 </span>
                 <span>
-                  <MarkerSwatch /> Time slider week
+                  <MarkerSwatch /> {t(lang, "sliderWeek")}
                 </span>
               </div>
               </div>
               <CumulativeChart cum={cum} xDomain={xDomain} markerDay={markerDay} onPick={onPick} />
               <p className="season-note muted">
-                Official share = cumulative area the mill reports as harvested ÷ its final area ({ha(cum.official_total_ha)});
-                detected share = cumulative dated cane area, counted at the first cut-off on or after its harvest date ÷ all
-                dated area ({ha(cum.detected_total_ha)}); the mapped area may not match the mill's supply area exactly.
+                {t(lang, "shareNote", { o: ha(lang, cum.official_total_ha), d: ha(lang, cum.detected_total_ha) })}
               </p>
             </div>
           )}

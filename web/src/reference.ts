@@ -1,4 +1,5 @@
 import type { Feature, FeatureCollection, MultiPolygon } from "geojson";
+import { formatDate, t, type Lang } from "./i18n";
 import { toDay } from "./season";
 
 // GET /reference/{site} (docs/API.md).
@@ -40,15 +41,17 @@ export type ReferenceFeature = Feature<MultiPolygon, ReferenceProps>;
 export type ReferenceCollection = FeatureCollection<MultiPolygon, ReferenceProps>;
 
 /** What each kind of reference date is, for the card. */
-export function referenceDateLabel(r: ReferenceDate): string {
-  if (r.kind === "labelled_window") return `Labelled harvest window (Sentinel-2 NDVI)${r.season ? `, zafra ${r.season}` : ""}`;
-  if (r.kind === "ground_truth") return `Reported ground-truth date${r.season ? `, zafra ${r.season}` : ""}`;
+export function referenceDateLabel(lang: Lang, r: ReferenceDate): string {
+  const season = r.season ? t(lang, "zafraSeason", { s: r.season }) : "";
+  if (r.kind === "labelled_window") return t(lang, "labelledWindow") + season;
+  if (r.kind === "ground_truth") return t(lang, "groundTruth") + season;
   return r.property;
 }
 
 /** The reference date as text: one date, or `start → end` for a window. */
-export function referenceDateText(r: ReferenceDate): string {
-  return r.date_start === r.date_end ? r.date_start : `${r.date_start} → ${r.date_end}`;
+export function referenceDateText(lang: Lang, r: ReferenceDate): string {
+  const [a, b] = [formatDate(lang, r.date_start), formatDate(lang, r.date_end)];
+  return r.date_start === r.date_end ? a : `${a} → ${b}`;
 }
 
 /** Radar date minus reference, in days (positive: radar later). For a window, 0 when the
@@ -68,7 +71,7 @@ export function inCoverage(r: ReferenceDate, from: string, to: string): boolean 
   return r.date_end >= from && r.date_start <= to;
 }
 
-export function formatDiff(days: number, isWindow: boolean): string {
-  if (days === 0) return isWindow ? "inside" : "0";
+export function formatDiff(lang: Lang, days: number, isWindow: boolean): string {
+  if (days === 0) return isWindow ? t(lang, "inside") : "0";
   return days > 0 ? `+${days}` : `${days}`;
 }

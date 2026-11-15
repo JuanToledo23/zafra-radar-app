@@ -1,15 +1,17 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { t, useLang } from "./i18n";
 import { Icon, type IconName } from "./icons";
 
 // Small shared interface pieces (docs/DESIGN.md): the "?" tooltip, segmented control,
-// loading skeleton and empty state.
+// disclosure, loading skeleton and empty state.
 
 const TIP_W = 280;
 const TIP_GAP = 8;
 
 /** "?" button with one plain sentence, shown on hover, focus or tap; Escape closes. The
  * text is placed with fixed coordinates, so a scrolling panel does not clip it. */
-export function InfoTip({ text, label = "What is this?" }: { text: string; label?: string }) {
+export function InfoTip({ text, label }: { text: string; label?: string }) {
+  const lang = useLang();
   const id = useId();
   const btn = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState<{ left: number; top: number; above: boolean } | null>(null);
@@ -40,7 +42,7 @@ export function InfoTip({ text, label = "What is this?" }: { text: string; label
         ref={btn}
         type="button"
         className="tip-btn"
-        aria-label={label}
+        aria-label={label ?? t(lang, "whatIsThis")}
         aria-describedby={pos ? id : undefined}
         onFocus={show}
         onBlur={hide}
@@ -109,11 +111,32 @@ export function Segmented<V extends string>({
   );
 }
 
+/** "More options" / "More detail": a button that shows or hides what follows, closed by
+ * default. The content is not rendered while closed. */
+export function Disclosure({ label, testId, className, children }: { label: string; testId?: string; className?: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <div className={`disclosure${open ? " open" : ""}${className ? ` ${className}` : ""}`}>
+      <button type="button" className="disclosure-btn" aria-expanded={open} aria-controls={id} data-testid={testId} onClick={() => setOpen(!open)}>
+        <Icon name="chevronDown" className="chev" />
+        <span>{label}</span>
+      </button>
+      {open && (
+        <div id={id} className="disclosure-body">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Grey placeholder lines while data loads, with the loading text for screen readers. */
-export function Skeleton({ lines = 3, label = "Loading…", className }: { lines?: number; label?: string; className?: string }) {
+export function Skeleton({ lines = 3, label, className }: { lines?: number; label?: string; className?: string }) {
+  const lang = useLang();
   return (
     <div className={`skeleton${className ? ` ${className}` : ""}`} role="status">
-      <span className="sr-only">{label}</span>
+      <span className="sr-only">{label ?? t(lang, "loading")}</span>
       {Array.from({ length: lines }, (_, i) => (
         <span key={i} className="skeleton-line" style={{ width: `${[92, 78, 64, 85, 70][i % 5]}%` }} />
       ))}

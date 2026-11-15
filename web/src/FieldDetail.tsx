@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import type { Site } from "./App";
 import { niceTicks } from "./chartScale";
 import { COHERENCE_COLOR, FIRE_COLOR, HARVEST_COLOR, ORBIT_COLORS, REFERENCE_COLOR } from "./colors";
+import { alertLabel, severityLabel } from "./alerts";
+import { formatDate, formatNumber, t, tValue, useLang, type Lang } from "./i18n";
 import { Icon } from "./icons";
 import { toDay } from "./season";
 import TimeSeriesChart, { SeriesSwatch, type ChartSeries } from "./TimeSeriesChart";
-import { EmptyState, Segmented, Skeleton, TitleTip } from "./ui";
+import { Disclosure, EmptyState, Segmented, Skeleton, TitleTip } from "./ui";
 
 // GET /segments/{site}/{segment_id} (docs/API.md).
 type SeriesRow = { date: string; hv_db: number | null; hh_db: number | null };
@@ -48,26 +50,12 @@ type Load =
   | { state: "error"; message: string }
   | { state: "ok"; data: SegmentDetail };
 
-// Plain-language values for the library's status and date-confidence codes
-// (research library docs/METHODS.md section 6).
-const STATUS: Record<string, string> = {
-  harvested: "Harvest detected and dated",
-  no_baseline: "Not dated: too few standing-cane looks before the drop",
-  harvested_before_coverage: "Harvested before radar coverage began",
-  not_detected: "No harvest detected",
-};
-const CONFIDENCE: Record<string, string> = {
-  high: "High",
-  medium: "Medium",
-  low: "Low",
-  none: "None (no date)",
-  uncertain: "None (no date); land-cover map says trees or grassland",
-};
+// Plain-language values for the library's status and date-confidence codes (research
+// library docs/METHODS.md section 6) are in i18n.ts: status_<code>, fconf_<code>.
 const SENSORS: Record<string, string> = { N: "VIIRS S-NPP", N20: "VIIRS NOAA-20", N21: "VIIRS NOAA-21" };
-const SOURCES: Record<string, string> = { llm: "LLM, verified", template: "template" };
 const ORBITS = [
-  { key: "asc", label: "Ascending", marker: "circle", dash: undefined },
-  { key: "desc", label: "Descending", marker: "square", dash: "5 3" },
+  { key: "asc", marker: "circle", dash: undefined },
+  { key: "desc", marker: "square", dash: "5 3" },
 ] as const;
 const MAX_FIRES = 10;
 const COHERENCE_REF = 0.3;
@@ -95,10 +83,10 @@ function useSegment(siteId: string, segmentId: string): Load {
   return load;
 }
 
-function orbitSeries(d: SegmentDetail, band: "hv_db" | "hh_db"): ChartSeries[] {
+function orbitSeries(lang: Lang, d: SegmentDetail, band: "hv_db" | "hh_db"): ChartSeries[] {
   return ORBITS.map((o) => ({
     key: o.key,
-    label: o.label,
+    label: t(lang, `orbit_${o.key}`),
     color: ORBIT_COLORS[o.key],
     marker: o.marker,
     dash: o.dash,
@@ -112,80 +100,122 @@ function ticksFor(series: ChartSeries[], fallback: [number, number]): number[] {
   return values.length ? niceTicks(Math.min(...values), Math.max(...values), 4) : niceTicks(...fallback, 4);
 }
 
-function Charts({ d, site }: { d: SegmentDetail; site: Site }) {
-  const hv = orbitSeries(d, "hv_db");
-  const hh = orbitSeries(d, "hh_db");
-  const coherence: ChartSeries[] = [
-    {
-      key: "coh",
-      label: "Coherence",
-      color: COHERENCE_COLOR,
-      marker: "diamond",
-      points: d.coherence.flatMap((c) =>
-        c.coh_mean === null ? [] : [{ day: toDay(c.sec_date), value: c.coh_mean, note: `pair ${c.ref_date} → ${c.sec_date}` }],
-      ),
-    },
-  ];
+const db = (v: number) => v.toFixed(Number.isInteger(v) ? 0 : 1);
+
+/** What the charts of one field share: the date axis, the harvest band and the fire days. */
+function chartBase(d: SegmentDetail, site: Site, fires: boolean) {
   // The site's series range, stretched to a coherence pair that ends after it (Morelos has
   // pairs ending 2026-05-22, after the last backscatter date 2026-05-17).
-  const lastPair = Math.max(...coherence[0].points.map((p) => p.day));
+  const lastPair = Math.max(...d.coherence.flatMap((c) => (c.coh_mean === null ? [] : [toDay(c.sec_date)])));
   const xDomain: [number, number] = [
     toDay(site.series_date_min) - X_PAD_DAYS,
     Math.max(toDay(site.series_date_max), lastPair) + X_PAD_DAYS,
   ];
-  const common = {
+  return {
     xDomain,
-    harvest:
-      d.harvest_date !== null ? { day: toDay(d.harvest_date), unc: d.date_uncertainty_days ?? 0 } : null,
-    fireDays: d.fires.map((f) => toDay(f.datetime_local)),
+    harvest: d.harvest_date !== null ? { day: toDay(d.harvest_date), unc: d.date_uncertainty_days ?? 0 } : null,
+    fireDays: fires ? d.fires.map((f) => toDay(f.datetime_local)) : [],
   };
-  const db = (v: number) => v.toFixed(Number.isInteger(v) ? 0 : 1);
+}
+
+function OrbitLegend() {
+  const lang = useLang();
+  return (
+    <>
+      {ORBITS.map((o) => (
+        <span key={o.key}>
+          <SeriesSwatch color={ORBIT_COLORS[o.key]} marker={o.marker} dash={o.dash} /> {t(lang, `legOrbit_${o.key}`)}
+        </span>
+      ))}
+    </>
+  );
+}
+
+function HarvestBandSwatch() {
+  return (
+    <svg width={26} height={10} aria-hidden="true">
+      <rect x={7} y={0} width={12} height={10} fill={HARVEST_COLOR} opacity={0.2} />
+      <line x1={13} x2={13} y1={0} y2={10} stroke={HARVEST_COLOR} strokeWidth={2} />
+    </svg>
+  );
+}
+
+/** The one chart shown by default: HV over the season, with the harvest date marked. */
+function HvChart({ d, site }: { d: SegmentDetail; site: Site }) {
+  const lang = useLang();
+  const hv = orbitSeries(lang, d, "hv_db");
+  return (
+    <div className="charts" data-testid="hv-chart">
+      <div className="chart-legend">
+        <OrbitLegend />
+        {d.harvest_date && (
+          <span>
+            <HarvestBandSwatch /> {t(lang, "legHarvestBand")}
+          </span>
+        )}
+      </div>
+      <TimeSeriesChart {...chartBase(d, site, false)} yTitle={t(lang, "yHv")} unit="dB" yTicks={ticksFor(hv, [-25, -10])} series={hv} format={db} xLabels />
+    </div>
+  );
+}
+
+/** More detail: HV, HH and coherence on one date axis, with the nearby fires. */
+function Charts({ d, site }: { d: SegmentDetail; site: Site }) {
+  const lang = useLang();
+  const hv = orbitSeries(lang, d, "hv_db");
+  const hh = orbitSeries(lang, d, "hh_db");
+  const coherence: ChartSeries[] = [
+    {
+      key: "coh",
+      label: t(lang, "coherence"),
+      color: COHERENCE_COLOR,
+      marker: "diamond",
+      points: d.coherence.flatMap((c) =>
+        c.coh_mean === null
+          ? []
+          : [{ day: toDay(c.sec_date), value: c.coh_mean, note: t(lang, "pairNote", { a: formatDate(lang, c.ref_date), b: formatDate(lang, c.sec_date) }) }],
+      ),
+    },
+  ];
+  const common = chartBase(d, site, true);
 
   return (
     <div className="charts">
       <div className="chart-legend">
-        {ORBITS.map((o) => (
-          <span key={o.key}>
-            <SeriesSwatch color={ORBIT_COLORS[o.key]} marker={o.marker} dash={o.dash} /> {o.label} orbit
-          </span>
-        ))}
+        <OrbitLegend />
         <span>
-          <SeriesSwatch color={COHERENCE_COLOR} marker="diamond" /> Coherence (pair mean, at later date)
+          <SeriesSwatch color={COHERENCE_COLOR} marker="diamond" /> {t(lang, "legCoherence")}
         </span>
         <span>
-          <svg width={26} height={10} aria-hidden="true">
-            <rect x={7} y={0} width={12} height={10} fill={HARVEST_COLOR} opacity={0.2} />
-            <line x1={13} x2={13} y1={0} y2={10} stroke={HARVEST_COLOR} strokeWidth={2} />
-          </svg>{" "}
-          Harvest date ± uncertainty
+          <HarvestBandSwatch /> {t(lang, "legHarvestBand")}
         </span>
         <span>
           <svg width={26} height={10} aria-hidden="true">
             <path d="M13,2l4,7h-8Z" fill={FIRE_COLOR} />
           </svg>{" "}
-          Fire within {d.fire_buffer_m} m
+          {t(lang, "legFire", { m: d.fire_buffer_m })}
         </span>
         <span>
           <svg width={26} height={10} aria-hidden="true">
             <line x1={1} x2={25} y1={5} y2={5} stroke={REFERENCE_COLOR} strokeDasharray="2 3" />
           </svg>{" "}
-          Coherence {COHERENCE_REF} reference
+          {t(lang, "legCohRef", { v: COHERENCE_REF })}
         </span>
       </div>
-      <TitleTip as="h3" tip="How strongly the field sends back the radar's cross-polarised (HV) signal: high over standing cane, it usually drops sharply when the cane is cut.">
-        Radar signal (HV backscatter)
+      <TitleTip as="h3" tip={t(lang, "tipHv")}>
+        {t(lang, "prod_HV")}
       </TitleTip>
-      <TimeSeriesChart {...common} yTitle="HV (dB)" unit="dB" yTicks={ticksFor(hv, [-25, -10])} series={hv} format={db} />
-      <TitleTip as="h3" tip="The radar's co-polarised (HH) signal from the same passes; it depends more on the soil surface than HV does.">
-        Radar signal (HH backscatter)
+      <TimeSeriesChart {...common} yTitle={t(lang, "yHv")} unit="dB" yTicks={ticksFor(hv, [-25, -10])} series={hv} format={db} />
+      <TitleTip as="h3" tip={t(lang, "tipHh")}>
+        {t(lang, "hhTitle")}
       </TitleTip>
-      <TimeSeriesChart {...common} yTitle="HH (dB)" unit="dB" yTicks={ticksFor(hh, [-15, 0])} series={hh} format={db} />
-      <TitleTip as="h3" tip="How alike two consecutive radar passes are, from 0 to 1; a field that is cut or disturbed between the passes loses coherence.">
-        Similarity between passes (interferometric coherence)
+      <TimeSeriesChart {...common} yTitle={t(lang, "yHh")} unit="dB" yTicks={ticksFor(hh, [-15, 0])} series={hh} format={db} />
+      <TitleTip as="h3" tip={t(lang, "tipCoh")}>
+        {t(lang, "cohTitle")}
       </TitleTip>
       <TimeSeriesChart
         {...common}
-        yTitle="Coherence (0–1)"
+        yTitle={t(lang, "yCoh")}
         unit=""
         yTicks={[0, 0.2, 0.4, 0.6, 0.8, 1]}
         series={coherence}
@@ -197,21 +227,24 @@ function Charts({ d, site }: { d: SegmentDetail; site: Site }) {
   );
 }
 
+/** The field's summary in English or Spanish; it opens in the interface language. */
 export function Summary({ summary }: { summary: SegmentDetail["summary"] }) {
-  const [lang, setLang] = useState<"en" | "es">("en");
-  if (!summary) return <EmptyState title="No summary for this field yet" />;
+  const appLang = useLang();
+  const [lang, setLang] = useState<Lang>(appLang);
+  useEffect(() => setLang(appLang), [appLang]);
+  if (!summary) return <EmptyState title={t(appLang, "noSummary")} />;
   const s = summary[lang];
   return (
     <>
       <div className="summary-bar">
         <Segmented
-          label="Summary language"
+          label={t(appLang, "summaryLang")}
           size="sm"
           value={lang}
           onChange={setLang}
           options={(["en", "es"] as const).map((l) => ({ value: l, label: l.toUpperCase() }))}
         />
-        <span className="pill">{SOURCES[s.source] ?? s.source}</span>
+        <span className="pill">{tValue(appLang, `src_${s.source}`, s.source)}</span>
       </div>
       <p className="summary-text" lang={lang}>
         {s.text}
@@ -221,27 +254,30 @@ export function Summary({ summary }: { summary: SegmentDetail["summary"] }) {
 }
 
 function Fires({ fires, buffer }: { fires: Fire[]; buffer: number }) {
+  const lang = useLang();
   const newest = [...fires].sort((a, b) => b.datetime_local.localeCompare(a.datetime_local));
   const more = newest.length - MAX_FIRES;
   return (
     <>
       <p className="key-line">
-        <strong>{fires.length}</strong> fire detection{fires.length === 1 ? "" : "s"} within {buffer} m
+        <strong>{formatNumber(lang, fires.length)}</strong> {t(lang, fires.length === 1 ? "fireDetOne" : "fireDetMany", { m: buffer })}
       </p>
       {fires.length > 0 && (
         <table className="table table-compact fires">
           <thead>
             <tr>
-              <th>Local time</th>
-              <th>Sensor</th>
-              <th className="num">FRP (MW)</th>
-              <th className="num">Dist. (m)</th>
+              <th>{t(lang, "colLocalTime")}</th>
+              <th>{t(lang, "colSensor")}</th>
+              <th className="num">{t(lang, "colFrp")}</th>
+              <th className="num">{t(lang, "colDist")}</th>
             </tr>
           </thead>
           <tbody>
             {newest.slice(0, MAX_FIRES).map((f, i) => (
               <tr key={i}>
-                <td>{f.datetime_local.slice(0, 16).replace("T", " ")}</td>
+                <td>
+                  {formatDate(lang, f.datetime_local)} {f.datetime_local.slice(11, 16)}
+                </td>
                 <td>{SENSORS[f.sensor] ?? f.sensor}</td>
                 <td className="num">{num(f.frp, 1)}</td>
                 <td className="num">{Math.round(f.distance_m)}</td>
@@ -250,12 +286,13 @@ function Fires({ fires, buffer }: { fires: Fire[]; buffer: number }) {
           </tbody>
         </table>
       )}
-      {more > 0 && <p className="muted small">and {more} more</p>}
+      {more > 0 && <p className="muted small">{t(lang, "andMore", { n: formatNumber(lang, more) })}</p>}
     </>
   );
 }
 
 function Detail({ d, site, onZoom }: { d: SegmentDetail; site: Site; onZoom: (bbox: SegmentDetail["bbox"]) => void }) {
+  const lang = useLang();
   const disagree = d.alerts.some((a) => a.code === "RADAR_OPTICAL_DISAGREE");
   return (
     <>
@@ -263,91 +300,94 @@ function Detail({ d, site, onZoom }: { d: SegmentDetail; site: Site; onZoom: (bb
         <div>
           <div className="field-id">{d.segment_id}</div>
           <div className="muted">
-            {d.area_ha.toFixed(2)} ha · {STATUS[d.status] ?? d.status}
+            {formatNumber(lang, d.area_ha, 2)} ha · {tValue(lang, `status_${d.status}`, d.status)}
           </div>
         </div>
         <button type="button" className="btn btn-secondary btn-sm zoom" onClick={() => onZoom(d.bbox)}>
-          <Icon name="target" /> Zoom to field
+          <Icon name="target" /> {t(lang, "zoomToField")}
         </button>
       </div>
 
-      <section className="block" data-testid="harvest">
-        <TitleTip tip="The harvest date the radar gives this field; the ± range comes from the time between the radar passes around the cut.">
-          Harvest
-        </TitleTip>
+      <p className="field-lead" data-testid="harvest-lead">
         {d.harvest_date ? (
-          <p className="harvest-date">
-            {d.harvest_date}
-            {d.date_uncertainty_days !== null && <span> ± {d.date_uncertainty_days} days</span>}
-          </p>
+          <>
+            {t(lang, "leadHarvested", { date: formatDate(lang, d.harvest_date) })}
+            {d.date_uncertainty_days !== null && (
+              <span className="field-lead-unc"> {t(lang, "leadUncertainty", { n: formatNumber(lang, d.date_uncertainty_days) })}</span>
+            )}
+          </>
         ) : (
-          <p className="harvest-date">No harvest dated</p>
+          t(lang, "leadNone")
         )}
-        <table className="props">
-          <tbody>
-            <tr>
-              <th>Date confidence</th>
-              <td>{CONFIDENCE[d.confidence] ?? d.confidence}</td>
-            </tr>
-            <tr>
-              <th>Cane probability, optical (p_cane)</th>
-              <td>{num(d.p_cane, 2)}</td>
-            </tr>
-            <tr>
-              <th>Cane probability, radar (p_cane_radar)</th>
-              <td>{num(d.p_cane_radar, 2)}</td>
-            </tr>
-          </tbody>
-        </table>
-        <div className="key-numbers">
-          <div className="stat">
-            <div className="key-value">{num(d.hv_drop_db, 2)} dB</div>
-            <div className="stat-label">
-              {d.harvest_date ? "Radar signal drop at harvest (HV drop)" : "Largest radar signal drop (HV drop)"}
-            </div>
-          </div>
-          <div className="stat">
-            <div className="key-value">{num(d.coh_min, 2)}</div>
-            <div className="stat-label">Lowest similarity between passes (minimum coherence)</div>
-          </div>
-        </div>
-        {disagree && <p className="note">Radar and optical disagree on whether this field is cane.</p>}
-        {d.wc_disagrees && <p className="note">The WorldCover land-cover map shows trees or grassland here.</p>}
+      </p>
+
+      <section className="block">
+        <TitleTip tip={t(lang, "tipHv")}>{t(lang, "hvTitle")}</TitleTip>
+        <HvChart d={d} site={site} />
       </section>
 
       <section className="block">
-        <TitleTip tip="A short text about this field from its facts, in English or Spanish; the label says whether an LLM wrote it (then verified) or a template.">
-          Summary
-        </TitleTip>
+        <TitleTip tip={t(lang, "tipSummary")}>{t(lang, "summary")}</TitleTip>
         <Summary key={d.segment_id} summary={d.summary} />
       </section>
 
-      <section className="block">
-        <TitleTip tip="Every radar pass over this field during the season, on one date axis, with the detected harvest date marked.">
-          Radar signal over the season (time series)
-        </TitleTip>
-        <Charts d={d} site={site} />
-      </section>
-
-      <section className="block">
-        <TitleTip tip={`Satellite (VIIRS) fire detections within ${d.fire_buffer_m} m of this field; a fire detected near a field is often a neighbouring field's.`}>
-          Fires
-        </TitleTip>
-        <Fires fires={d.fires} buffer={d.fire_buffer_m} />
-      </section>
-
-      {d.alerts.length > 0 && (
-        <section className="block">
-          <h3>Alerts</h3>
-          <ul className="alerts">
-            {d.alerts.map((a) => (
-              <li key={a.code}>
-                <span className={`sev sev-${a.severity}`}>{a.severity}</span> {a.code}
-              </li>
-            ))}
-          </ul>
+      <Disclosure label={t(lang, "moreDetail")} testId="more-detail" className="field-more">
+        <section className="block" data-testid="harvest">
+          <TitleTip tip={t(lang, "tipHarvest")}>{t(lang, "harvest")}</TitleTip>
+          <table className="props">
+            <tbody>
+              <tr>
+                <th>{t(lang, "dateConfidence")}</th>
+                <td>{tValue(lang, `fconf_${d.confidence}`, d.confidence)}</td>
+              </tr>
+              <tr>
+                <th>{t(lang, "pCane")}</th>
+                <td>{num(d.p_cane, 2)}</td>
+              </tr>
+              <tr>
+                <th>{t(lang, "pCaneRadar")}</th>
+                <td>{num(d.p_cane_radar, 2)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div className="key-numbers">
+            <div className="stat">
+              <div className="key-value">{num(d.hv_drop_db, 2)} dB</div>
+              <div className="stat-label">{t(lang, d.harvest_date ? "hvDropAt" : "hvDropMax")}</div>
+            </div>
+            <div className="stat">
+              <div className="key-value">{num(d.coh_min, 2)}</div>
+              <div className="stat-label">{t(lang, "cohMin")}</div>
+            </div>
+          </div>
+          {disagree && <p className="note">{t(lang, "noteDisagree")}</p>}
+          {d.wc_disagrees && <p className="note">{t(lang, "noteWorldCover")}</p>}
         </section>
-      )}
+
+        <section className="block">
+          <TitleTip tip={t(lang, "tipSeries")}>{t(lang, "seriesTitle")}</TitleTip>
+          <Charts d={d} site={site} />
+        </section>
+
+        <section className="block">
+          <TitleTip tip={t(lang, "tipFires", { m: d.fire_buffer_m })}>{t(lang, "fires")}</TitleTip>
+          <Fires fires={d.fires} buffer={d.fire_buffer_m} />
+        </section>
+
+        {d.alerts.length > 0 && (
+          <section className="block">
+            <h3>{t(lang, "alerts")}</h3>
+            <ul className="alerts">
+              {d.alerts.map((a) => (
+                <li key={a.code}>
+                  <span className={`sev sev-${a.severity}`}>{severityLabel(lang, a.severity)}</span> {alertLabel(lang, a.code)}{" "}
+                  <span className="muted small">({a.code})</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </Disclosure>
     </>
   );
 }
@@ -355,12 +395,13 @@ function Detail({ d, site, onZoom }: { d: SegmentDetail; site: Site; onZoom: (bb
 type Props = { site: Site; segmentId: string; onZoom: (bbox: SegmentDetail["bbox"]) => void };
 
 export default function FieldDetail({ site, segmentId, onZoom }: Props) {
+  const lang = useLang();
   const load = useSegment(site.site_id, segmentId);
   return (
     <div className="field" data-testid="field-detail" data-state={load.state}>
-      {load.state === "loading" && <Skeleton lines={6} label={`Loading ${segmentId}…`} />}
-      {load.state === "not-found" && <EmptyState icon="search" title={`Segment ${segmentId} was not found for this site.`} />}
-      {load.state === "error" && <p className="error">Could not load {segmentId}: {load.message}</p>}
+      {load.state === "loading" && <Skeleton lines={6} label={t(lang, "loadingId", { id: segmentId })} />}
+      {load.state === "not-found" && <EmptyState icon="search" title={t(lang, "segmentNotFound", { id: segmentId })} />}
+      {load.state === "error" && <p className="error">{t(lang, "couldNotLoad", { id: segmentId, msg: load.message })}</p>}
       {load.state === "ok" && <Detail d={load.data} site={site} onZoom={onZoom} />}
     </div>
   );

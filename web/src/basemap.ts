@@ -9,6 +9,12 @@ export const ESRI_TILES =
 export const ESRI_ATTRIBUTION =
   "Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community";
 
+// Explorer only: the satellite image greyed and flattened to mid tones under the field
+// colours, and a plain mid grey behind it, so the map looks alike with or without the
+// satellite image (offline).
+export const BASEMAP_DIM = { "raster-saturation": -0.9, "raster-brightness-min": 0.2, "raster-brightness-max": 0.8, "raster-contrast": -0.35 } as const;
+export const EXPLORER_BACKGROUND = "#8f9297";
+
 export type BasemapState = "checking" | "online" | "offline";
 
 /** True if one Esri tile answers within `timeoutMs`. `no-cors` gives an opaque response,

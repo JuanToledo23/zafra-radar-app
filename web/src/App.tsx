@@ -10,8 +10,19 @@ import SeasonPanel, { type Weekly } from "./SeasonPanel";
 import SidePanel from "./SidePanel";
 import TimeSlider from "./TimeSlider";
 import type { BasemapState } from "./basemap";
-import { LANGS, t, type Lang } from "./i18n";
-import { DEFAULT_RADAR, changeLayers, resolveRadar, type RadarSettings, type RasterIndex } from "./radar";
+import { LANGS, LangContext, t, tValue, type Key, type Lang } from "./i18n";
+import type { OpsSeries } from "./ops";
+import {
+  DEFAULT_RADAR,
+  changeLayers,
+  isSeasonCompare,
+  layerDates,
+  resolveRadar,
+  viewOf,
+  viewPreset,
+  type RadarSettings,
+  type RasterIndex,
+} from "./radar";
 import type { ReferenceCollection } from "./reference";
 import { cumulativeHarvests, stepIndex, toDay, weekSteps } from "./season";
 import { Segmented } from "./ui";
@@ -41,7 +52,6 @@ export type Selection =
   | { kind: "reference"; id: string }
   | null;
 
-export const SITE_LABELS: Record<string, string> = { morelos: "Morelos", brazil: "Brazil" };
 type View = "explorer" | "ops";
 const DEFAULT_SITE = "morelos";
 const PLAY_STEP_MS = 600;
@@ -60,6 +70,10 @@ export default function App() {
   const [seasonExpanded, setSeasonExpanded] = useState(false);
   const [view, setView] = useState<View>("explorer");
   const [lang, setLang] = useState<Lang>("en");
+  // Harvested area per Monday week (GET /ops/{site}/series as of the last harvest date), for
+  // the hectares beside the timeline's count.
+  const [areaWeeks, setAreaWeeks] = useState<OpsSeries["weeks"] | null>(null);
+  const [byDate, setByDate] = useState(false); // More options: colour harvested fields by date
   // The replay date shared by the explorer's slider and the mill operations screen: null
   // until either sets it (the slider then starts at the season's first week, the operations
   // screen at the last harvest date). The slider shows the week containing it.
@@ -133,6 +147,19 @@ export default function App() {
   }, [siteId]);
 
   const site = sites.find((s) => s.site_id === siteId) ?? null;
+
+  useEffect(() => {
+    if (!site) return;
+    const ctrl = new AbortController();
+    setAreaWeeks(null);
+    fetch(`/api/ops/${site.site_id}/series?as_of=${site.harvest_date_max}`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s: OpsSeries | null) => setAreaWeeks(s?.weeks ?? null))
+      .catch(() => {
+        if (!ctrl.signal.aborted) setAreaWeeks(null);
+      });
+    return () => ctrl.abort();
+  }, [site]);
   const steps = useMemo(
     () => (site ? weekSteps(toDay(site.harvest_date_min), toDay(site.harvest_date_max)) : []),
     [site],
@@ -152,7 +179,22 @@ export default function App() {
   // Slider position: the week containing the shared date (a Sunday), clamped to the season.
   const at = asOf === null ? 0 : stepIndex(steps, asOf);
   const day = steps.length ? steps[at] : null;
-  const radarView = useMemo(() => resolveRadar(rasters, radar, day), [rasters, radar, day]);
+  const radarView = useMemo(() => resolveRadar(lang, rasters, radar, day), [lang, rasters, radar, day]);
+  const mapView = viewOf(radar);
+  const hectares =
+    areaWeeks && day !== null ? areaWeeks.reduce((n, w) => (toDay(w.start) <= day ? n + w.area_ha : n), 0) : null;
+  // Before / after: the season's first and last image are named as such; other pairs (More
+  // options) by their dates, and a change layer as such.
+  const seasonCompare = isSeasonCompare(rasters, radar);
+  const side = (l: RasterIndex["layers"][number] | null | undefined, key: Key) =>
+    l ? t(lang, l.product === "change" ? "sideChange" : key, { date: layerDates(lang, l), dates: layerDates(lang, l) }) : "—";
+  const sideLabels: [string, string] | null =
+    mapView === "compare" && radarView
+      ? [
+          side(radarView.left, seasonCompare ? "sideBefore" : "sideEarlier"),
+          side(radarView.right, seasonCompare ? "sideAfter" : "sideLater"),
+        ]
+      : null;
 
   useEffect(() => {
     if (!playing) return;
@@ -186,7 +228,8 @@ export default function App() {
   };
 
   return (
-    <div className="app">
+    <LangContext.Provider value={lang}>
+    <div className="app" lang={lang}>
       <header className="topbar">
         <div className="brand">
           <svg className="brand-mark" width={28} height={28} viewBox="0 0 32 32" aria-hidden="true">
@@ -197,11 +240,11 @@ export default function App() {
           <h1>Zafra Radar</h1>
         </div>
         <label className="site-field">
-          <span className="sr-only">Site</span>
+          <span className="sr-only">{t(lang, "site")}</span>
           <select
             className="select site-select"
             data-testid="site-select"
-            aria-label="Site"
+            aria-label={t(lang, "site")}
             value={siteId}
             onChange={(e) => {
               setSelected(null);
@@ -211,19 +254,19 @@ export default function App() {
           >
             {(sites.length ? sites.map((s) => s.site_id) : [DEFAULT_SITE]).map((id) => (
               <option key={id} value={id}>
-                {SITE_LABELS[id] ?? id}
+                {tValue(lang, `short_${id}`, id)}
               </option>
             ))}
           </select>
         </label>
         <Segmented
-          label="View"
+          label={t(lang, "view")}
           className="view-switch"
           value={view}
           onChange={switchView}
           options={(["explorer", "ops"] as View[]).map((v) => ({
             value: v,
-            label: v === "explorer" ? "Explorer" : "Mill operations",
+            label: t(lang, v),
             testId: `view-${v}`,
           }))}
         />
@@ -239,16 +282,15 @@ export default function App() {
               }}
             />
           )}
-          {view === "ops" && (
-            <Segmented
-              label={t(lang, "language")}
-              size="sm"
-              value={lang}
-              onChange={setLang}
-              options={LANGS.map((l) => ({ value: l, label: l.toUpperCase(), testId: `ops-lang-${l}` }))}
-            />
-          )}
-          <div className="status" aria-label="Connection status">
+          <Segmented
+            label={t(lang, "language")}
+            size="sm"
+            value={lang}
+            onChange={setLang}
+            options={LANGS.map((l) => ({ value: l, label: l.toUpperCase(), testId: `lang-${l}` }))}
+          />
+          {/* Kept for the headless checks (scripts/screenshot.mjs), not shown. */}
+          <div className="status sr-only" aria-label={t(lang, "connection")}>
             <span className={`status-item status-${basemap}`} data-testid="basemap-state" title="Map background">
               basemap: {basemap === "online" ? "satellite" : basemap === "offline" ? "offline (plain)" : "checking"}
             </span>
@@ -264,7 +306,7 @@ export default function App() {
               data-testid="guide-open"
               onClick={() => setGuideOpen(!guideOpen)}
             >
-              <Icon name="help" /> Start here
+              <Icon name="help" /> {t(lang, "startHere")}
             </button>
           )}
         </div>
@@ -292,9 +334,15 @@ export default function App() {
                 radarOutlines={radar.outlines}
                 radarAttribution={rasters?.attribution.text ?? null}
                 compare={radar.mode === "compare"}
+                byDate={byDate}
+                sideLabels={sideLabels}
               />
               <LayersPanel
                 site={site}
+                view={mapView}
+                onView={(v) => setRadar(viewPreset(v, rasters, radar))}
+                byDate={byDate}
+                onByDate={() => setByDate(!byDate)}
                 reference={reference}
                 referenceOn={referenceOn}
                 onReference={() => setReferenceOn(!referenceOn)}
@@ -327,6 +375,7 @@ export default function App() {
                 playing={playing}
                 onTogglePlay={togglePlay}
                 harvests={weekly ? cumulativeHarvests(weekly.weeks, day) : null}
+                hectares={hectares}
                 seasonOpen={seasonOpen}
                 onToggleSeason={() => setSeasonOpen(!seasonOpen)}
               />
@@ -362,5 +411,6 @@ export default function App() {
         </main>
       )}
     </div>
+    </LangContext.Provider>
   );
 }

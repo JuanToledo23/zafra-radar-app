@@ -1,3 +1,4 @@
+import { formatDate, t, useLang, type Key, type Lang } from "./i18n";
 import {
   IMAGE_PRODUCTS,
   changeFor,
@@ -6,13 +7,12 @@ import {
   layerDates,
   rampCss,
   type Product,
-  type RadarMode,
   type RadarSettings,
   type RadarView,
   type RasterIndex,
   type RasterLayer,
 } from "./radar";
-import { InfoTip, Segmented } from "./ui";
+import { InfoTip } from "./ui";
 
 type Props = {
   index: RasterIndex | null;
@@ -21,82 +21,75 @@ type Props = {
   onChange: (s: RadarSettings) => void;
 };
 
-const MODES: [RadarMode, string][] = [
-  ["off", "Off"],
-  ["single", "Single date"],
-  ["compare", "Compare"],
-];
-// Plain names of the products, with the technical term kept.
-const PRODUCT_NAMES: Record<Product, string> = {
-  HV: "HV backscatter",
-  HH: "HH backscatter",
-  "cross-ratio": "HV − HH cross-ratio",
-  change: "HV change",
-};
+/** Plain name of a product, with the technical term kept. */
+export const productName = (lang: Lang, p: Product) => t(lang, `prod_${p}` as Key);
 
 // Legend line of one layer: its ramp over the stretch and the library's description of the
-// colours (meaning.text, cited in meaning.source).
+// colours (meaning.text, cited in meaning.source), shown as the library wrote it.
 function Legend({ layer, side, dates }: { layer: RasterLayer; side?: string; dates?: string }) {
+  const lang = useLang();
   const [lo, hi] = layer.stretch;
   return (
     <div className="radar-legend" data-testid="radar-legend">
       <div className="radar-legend-head">
         {side && <strong>{side}: </strong>}
-        {layer.label}, <span data-testid="radar-date">{dates ?? layerDates(layer)}</span>
+        {productName(lang, layer.product)}, <span>{dates ?? layerDates(lang, layer)}</span>
       </div>
       <div className="radar-ramp" style={{ background: rampCss(layer) }} />
       <div className="ramp-labels">
         <span>{lo} dB</span>
         <span>{hi} dB</span>
       </div>
-      <p className="radar-meaning" title={`Source: ${layer.meaning.source}`}>
+      <p className="radar-meaning" lang="en" title={t(lang, "sourceIs", { src: layer.meaning.source })}>
         {layer.meaning.text}
       </p>
     </div>
   );
 }
 
-// "Radar imagery" section of the map layers panel: off, one date (optionally following the
-// time slider) or two dates side by side with a divider. The map work is in MapView.
+// "Radar imagery" settings under More options: the product and date(s) of the current view
+// (Radar image: one date, optionally following the time slider; Before / after: two dates
+// side by side with a divider), opacity, outlines and the full legend. The view itself is
+// picked with the map's view switch; the map work is in MapView.
 export default function RadarControl({ index, settings: s, view, onChange }: Props) {
+  const lang = useLang();
   const set = (patch: Partial<RadarSettings>) => onChange({ ...s, ...patch });
   const dates = index?.dates ?? [];
   const hasChange = !!index && changeLayers(index).length > 0;
   const pairChange = index ? changeFor(index, s.left, s.right) : null;
   const products: Product[] = hasChange ? [...IMAGE_PRODUCTS, "change"] : IMAGE_PRODUCTS;
   const sameProduct = !!view?.left && !!view.right && view.left.product === view.right.product;
+  const dateOptions = (list: string[]) =>
+    list.map((d) => (
+      <option key={d} value={d}>
+        {formatDate(lang, d)}
+      </option>
+    ));
 
   return (
     <div className="radar" data-testid="radar">
       <div className="layer-head">
         <span className="layer-title">
-          Radar imagery
-          <InfoTip text="The NISAR L-band radar images under the fields; in HV, brighter means tall vegetation such as standing cane, darker means smooth bare soil or calm water." />
+          {t(lang, "radarImagery")}
+          <InfoTip text={t(lang, "tipRadar")} />
         </span>
       </div>
-      <Segmented
-        label="Radar imagery"
-        size="sm"
-        className="seg-block"
-        value={s.mode}
-        onChange={(m) => set({ mode: m })}
-        options={MODES.map(([m, label]) => ({ value: m, label, disabled: !index && m !== "off", testId: `radar-${m}` }))}
-      />
-      {!index && <p className="muted small radar-none">No radar tiles for this site.</p>}
+      {!index && <p className="muted small radar-none">{t(lang, "noRadarTiles")}</p>}
+      {index && s.mode === "off" && <p className="muted small radar-none" data-testid="radar-pick">{t(lang, "radarPickView")}</p>}
       {index && s.mode === "single" && (
         <div className="radar-body">
           <label className="field-row">
-            <span>Product</span>
+            <span>{t(lang, "product")}</span>
             <select className="select" value={s.product} data-testid="radar-product" onChange={(e) => set({ product: e.target.value as Product })}>
               {products.map((p) => (
                 <option key={p} value={p}>
-                  {PRODUCT_NAMES[p]}
+                  {productName(lang, p)}
                 </option>
               ))}
             </select>
           </label>
           <label className="field-row">
-            <span>{s.product === "change" ? "Pair" : "Date"}</span>
+            <span>{t(lang, s.product === "change" ? "pair" : "date")}</span>
             {s.product === "change" ? (
               <select
                 className="select"
@@ -108,7 +101,7 @@ export default function RadarControl({ index, settings: s, view, onChange }: Pro
                 {!view?.left && <option value="">—</option>}
                 {changeLayers(index).map((l) => (
                   <option key={l.id} value={l.id}>
-                    {changeName(l)}
+                    {changeName(lang, l)}
                   </option>
                 ))}
               </select>
@@ -121,34 +114,30 @@ export default function RadarControl({ index, settings: s, view, onChange }: Pro
                 onChange={(e) => set({ date: e.target.value })}
               >
                 {!view?.left && <option value="">—</option>}
-                {dates.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
+                {dateOptions(dates)}
               </select>
             )}
           </label>
-          <label className="check" title="Show the latest acquisition on or before the time slider date">
+          <label className="check" title={t(lang, "followTitle")}>
             <input type="checkbox" checked={s.follow} data-testid="radar-follow" onChange={(e) => set({ follow: e.target.checked })} />
-            <span>Follow time slider</span>
+            <span>{t(lang, "followSlider")}</span>
           </label>
         </div>
       )}
       {index && s.mode === "compare" && (
         <div className="radar-body">
           <label className="field-row">
-            <span>Product</span>
+            <span>{t(lang, "product")}</span>
             <select className="select" value={s.product === "change" ? "HV" : s.product} data-testid="radar-product" onChange={(e) => set({ product: e.target.value as Product })}>
               {IMAGE_PRODUCTS.map((p) => (
                 <option key={p} value={p}>
-                  {PRODUCT_NAMES[p]}
+                  {productName(lang, p)}
                 </option>
               ))}
             </select>
           </label>
           <label className="field-row">
-            <span>Left (earlier)</span>
+            <span>{t(lang, "leftEarlier")}</span>
             <select
               className="select"
               value={s.left ?? ""}
@@ -158,25 +147,17 @@ export default function RadarControl({ index, settings: s, view, onChange }: Pro
                 set({ left, right: s.right && s.right > left ? s.right : dates[dates.indexOf(left) + 1] });
               }}
             >
-              {dates.slice(0, -1).map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
+              {dateOptions(dates.slice(0, -1))}
             </select>
           </label>
           <label className="field-row">
-            <span>Right (later)</span>
+            <span>{t(lang, "rightLater")}</span>
             <select className="select" value={s.right ?? ""} data-testid="radar-right" onChange={(e) => set({ right: e.target.value })}>
-              {dates.filter((d) => !s.left || d > s.left).map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
+              {dateOptions(dates.filter((d) => !s.left || d > s.left))}
             </select>
           </label>
           {hasChange && (
-            <label className="check" title={pairChange ? undefined : "The library has change layers for consecutive dates only, plus the season layer for the first and last date"}>
+            <label className="check" title={pairChange ? undefined : t(lang, "rightChangeTitle")}>
               <input
                 type="checkbox"
                 checked={s.rightChange && !!pairChange}
@@ -184,7 +165,7 @@ export default function RadarControl({ index, settings: s, view, onChange }: Pro
                 data-testid="radar-right-change"
                 onChange={(e) => set({ rightChange: e.target.checked })}
               />
-              <span>Right side: HV change of the pair{pairChange ? "" : " (not available for these dates)"}</span>
+              <span>{t(lang, pairChange ? "rightChange" : "rightChangeNone")}</span>
             </label>
           )}
         </div>
@@ -193,7 +174,7 @@ export default function RadarControl({ index, settings: s, view, onChange }: Pro
         <>
           <div className="radar-body">
             <label className="field-row">
-              <span>Opacity</span>
+              <span>{t(lang, "opacity")}</span>
               <input
                 className="range-sm"
                 type="range"
@@ -207,23 +188,24 @@ export default function RadarControl({ index, settings: s, view, onChange }: Pro
             </label>
             <label className="check">
               <input type="checkbox" checked={s.outlines} data-testid="radar-outlines" onChange={(e) => set({ outlines: e.target.checked })} />
-              <span>Field outlines on top</span>
+              <span>{t(lang, "outlinesOnTop")}</span>
             </label>
           </div>
-          {view?.note && <p className="note small" data-testid="radar-note">{view.note}</p>}
           {view?.left && sameProduct ? (
-            <Legend layer={view.left} side="Both sides" dates={`left ${layerDates(view.left)}, right ${layerDates(view.right!)}`} />
+            <Legend
+              layer={view.left}
+              side={t(lang, "bothSides")}
+              dates={t(lang, "leftRight", { l: layerDates(lang, view.left), r: layerDates(lang, view.right!) })}
+            />
           ) : (
             <>
-              {view?.left && <Legend layer={view.left} side={s.mode === "compare" ? "Left" : undefined} />}
-              {view?.right && <Legend layer={view.right} side="Right" />}
+              {view?.left && <Legend layer={view.left} side={s.mode === "compare" ? t(lang, "left") : undefined} />}
+              {view?.right && <Legend layer={view.right} side={t(lang, "right")} />}
             </>
           )}
-          {s.outlines && (
-            <p className="radar-meaning muted">Outlines: harvested segments in the harvest-date colours, standing cane green.</p>
-          )}
-          <p className="radar-credit" title={`Source: ${index.attribution.source}`}>
-            Imagery: {index.attribution.text}
+          {s.outlines && <p className="radar-meaning muted">{t(lang, "outlinesNote")}</p>}
+          <p className="radar-credit" title={t(lang, "sourceIs", { src: index.attribution.source })}>
+            {t(lang, "imagery", { text: index.attribution.text })}
           </p>
         </>
       )}

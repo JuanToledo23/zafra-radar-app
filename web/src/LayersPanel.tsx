@@ -1,15 +1,27 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import type { Site } from "./App";
 import { ALERT_OUTLINE_COLOR, alertLabel } from "./alerts";
-import { Icon } from "./icons";
-import RadarControl from "./RadarControl";
-import type { RadarSettings, RadarView, RasterIndex } from "./radar";
+import { formatDate, t, useLang, type Lang } from "./i18n";
+import RadarControl, { productName } from "./RadarControl";
+import { layerDates, type MapViewKind, type RadarSettings, type RadarView, type RasterIndex } from "./radar";
 import type { ReferenceCollection } from "./reference";
-import { REFERENCE_CASING, REFERENCE_COLOR, RAMP_CSS, STANDING_COLOR, UNDATED_COLOR, UNDATED_OPACITY } from "./season";
-import { InfoTip } from "./ui";
+import {
+  HARVESTED_COLOR,
+  REFERENCE_CASING,
+  REFERENCE_COLOR,
+  RAMP_CSS,
+  STANDING_COLOR,
+  UNDATED_COLOR,
+  UNDATED_OPACITY,
+} from "./season";
+import { Disclosure, InfoTip, Segmented } from "./ui";
 
 type Props = {
   site: Site | null;
+  view: MapViewKind;
+  onView: (v: MapViewKind) => void;
+  byDate: boolean;
+  onByDate: () => void;
   reference: ReferenceCollection | null;
   referenceOn: boolean;
   onReference: () => void;
@@ -21,6 +33,15 @@ type Props = {
   radarView: RadarView | null;
   onRadar: (s: RadarSettings) => void;
 };
+
+const VIEWS: [MapViewKind, "viewHarvest" | "viewRadar" | "viewCompare"][] = [
+  ["harvest", "viewHarvest"],
+  ["radar", "viewRadar"],
+  ["compare", "viewCompare"],
+];
+// The HV ramp's ends (black −25 dB, white −8 dB; docs/API.md) for the bright / dark entries.
+const BRIGHT = "#f4f4f4";
+const DARK = "#141414";
 
 /** On / off row of one layer: a switch-like button (aria-pressed) with its legend below. */
 function LayerSwitch({ title, tip, on, disabled, hint, testId, onClick, children }: {
@@ -58,82 +79,141 @@ function LayerSwitch({ title, tip, on, disabled, hint, testId, onClick, children
   );
 }
 
-// Every map layer of the explorer in one panel over the map: the harvest colours (always on,
-// with their legend), radar imagery, reference fields and alerts. Collapsible.
-export default function LayersPanel({
-  site, reference, referenceOn, onReference, alertsOpen, alertCode, onAlerts, rasters, radar, radarView, onRadar,
-}: Props) {
-  // Collapsed by default on a narrow screen, where the panel would cover most of the map.
-  const [open, setOpen] = useState(() => typeof window === "undefined" || !window.matchMedia("(max-width: 700px)").matches);
-  const refCount = reference?.features.length ?? 0;
-  return (
-    <section className={`layers${open ? "" : " closed"}`} aria-label="Map layers" data-testid="layers">
-      <button type="button" className="layers-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <Icon name="layers" />
-        <span>Map layers</span>
-        <Icon name="chevronDown" className="chev" />
-      </button>
-      {open && (
-        <div className="layers-body">
-          <div className="layer" data-testid="legend">
-            <div className="layer-head">
-              <span className="layer-title">
-                Harvest progress
-                <InfoTip text="Each shape is a sugarcane field segment; its colour shows whether the radar had detected its harvest by the timeline date, and when." />
-              </span>
-            </div>
-            <div className="legend-label">Harvested, by harvest date</div>
+function Swatch({ color, opacity, border }: { color: string; opacity?: number; border?: boolean }) {
+  return <span className={`swatch${border ? " swatch-border" : ""}`} style={{ background: color, opacity }} />;
+}
+
+/** At most three plain entries describing what the current view draws. */
+function Legend({ lang, site, view, byDate, rasters, radarView }: {
+  lang: Lang;
+  site: Site | null;
+  view: MapViewKind;
+  byDate: boolean;
+  rasters: RasterIndex | null;
+  radarView: RadarView | null;
+}) {
+  if (view === "harvest")
+    return (
+      <div className="legend" data-testid="legend" data-view="harvest">
+        <InfoTip text={t(lang, "tipHarvestMap")} />
+        {byDate ? (
+          <div className="legend-ramp">
+            <div className="legend-label">{t(lang, "legByDate")}</div>
             <div className="ramp" style={{ background: RAMP_CSS }} />
             <div className="ramp-labels">
-              <span>{site?.harvest_date_min ?? ""}</span>
-              <span>{site?.harvest_date_max ?? ""}</span>
-            </div>
-            <div className="legend-item">
-              <span className="swatch" style={{ background: STANDING_COLOR }} /> Standing cane (harvested later)
-            </div>
-            <div className="legend-item">
-              <span className="swatch" style={{ background: UNDATED_COLOR, opacity: UNDATED_OPACITY }} />
-              Undated cane
+              <span>{site ? formatDate(lang, site.harvest_date_min) : ""}</span>
+              <span>{site ? formatDate(lang, site.harvest_date_max) : ""}</span>
             </div>
           </div>
-          <RadarControl index={rasters} settings={radar} view={radarView} onChange={onRadar} />
-          <LayerSwitch
-            title="Reference fields"
-            tip="Fields traced in the research library with their satellite (NDVI) harvest windows and, for some, grower-reported dates; used to check the radar dates."
-            on={referenceOn}
-            disabled={!refCount}
-            hint={refCount ? undefined : "No reference fields for this site"}
-            testId="reference-toggle"
-            onClick={onReference}
-          >
-            {referenceOn && (
-              <div className="legend-item">
-                <svg width={14} height={14} aria-hidden="true">
-                  <rect x={2} y={2} width={10} height={10} fill="none" stroke={REFERENCE_CASING} strokeWidth={3.5} />
-                  <rect x={2} y={2} width={10} height={10} fill="none" stroke={REFERENCE_COLOR} strokeWidth={1.5} strokeDasharray="3 2" />
-                </svg>
-                Reference field ({refCount}), id shown from zoom 12
-              </div>
-            )}
-            {!refCount && <p className="muted small layer-note">No reference fields for this site</p>}
-          </LayerSwitch>
-          <LayerSwitch
-            title="Alerts"
-            tip="Fields flagged for review by the research library's rules, such as a fire outside permitted hours; the list opens on the right."
-            on={alertsOpen}
-            testId="alerts-toggle"
-            onClick={onAlerts}
-          >
-            {alertsOpen && alertCode && (
-              <div className="legend-item">
-                <span className="swatch" style={{ border: `2px solid ${ALERT_OUTLINE_COLOR}` }} />
-                Alert: {alertLabel(alertCode)}
-              </div>
-            )}
-            {alertsOpen && !alertCode && <p className="muted small layer-note">Pick an alert type in the list to outline its fields.</p>}
-          </LayerSwitch>
+        ) : (
+          <div className="legend-item">
+            <Swatch color={HARVESTED_COLOR} /> {t(lang, "legHarvested")}
+          </div>
+        )}
+        <div className="legend-item">
+          <Swatch color={STANDING_COLOR} /> {t(lang, "legStanding")}
         </div>
+        <div className="legend-item">
+          <Swatch color={UNDATED_COLOR} opacity={UNDATED_OPACITY} border /> {t(lang, "legUndated")}
+        </div>
+      </div>
+    );
+  if (!rasters) return <p className="legend muted small">{t(lang, "noRadarTiles")}</p>;
+  const layer = radarView?.left ?? null;
+  const hv = view === "compare" || layer?.product === "HV";
+  return (
+    <div className="legend" data-testid="legend" data-view={view}>
+      <InfoTip text={t(lang, "tipRadar")} />
+      {hv ? (
+        <>
+          <div className="legend-item">
+            <Swatch color={BRIGHT} border /> {t(lang, "legBright")}
+          </div>
+          <div className="legend-item">
+            <Swatch color={DARK} /> {t(lang, "legDark")}
+          </div>
+        </>
+      ) : (
+        layer && <div className="legend-item">{productName(lang, layer.product)}</div>
       )}
+      {view === "radar" &&
+        (radarView?.note ? (
+          <p className="legend-date note small" data-testid="radar-note">{radarView.note}</p>
+        ) : (
+          layer && (
+            <div className="legend-date" data-testid="radar-date">
+              {hv ? t(lang, "radarImageOf", { date: layerDates(lang, layer) }) : layerDates(lang, layer)}
+            </div>
+          )
+        ))}
+      {view === "compare" && <div className="legend-date">{t(lang, "legDivider")}</div>}
+    </div>
+  );
+}
+
+// The panel over the map: the three map views (one click each), the legend of the current
+// view, and every other map control behind "More options", closed by default.
+export default function LayersPanel({
+  site, view, onView, byDate, onByDate, reference, referenceOn, onReference, alertsOpen, alertCode, onAlerts,
+  rasters, radar, radarView, onRadar,
+}: Props) {
+  const lang = useLang();
+  const refCount = reference?.features.length ?? 0;
+  return (
+    <section className="layers" aria-label={t(lang, "mapView")} data-testid="layers">
+      <Segmented
+        label={t(lang, "mapView")}
+        className="view-seg"
+        value={view}
+        onChange={onView}
+        options={VIEWS.map(([v, key]) => ({
+          value: v,
+          label: t(lang, key),
+          disabled: v !== "harvest" && !rasters,
+          title: v !== "harvest" && !rasters ? t(lang, "noRadarTiles") : undefined,
+          testId: `mapview-${v}`,
+        }))}
+      />
+      <Legend lang={lang} site={site} view={view} byDate={byDate} rasters={rasters} radarView={radarView} />
+      <Disclosure label={t(lang, "moreOptions")} testId="more-options" className="layers-more">
+        <LayerSwitch
+          title={t(lang, "colourByDate")}
+          tip={t(lang, "tipColourByDate")}
+          on={byDate}
+          testId="by-date-toggle"
+          onClick={onByDate}
+        />
+        <RadarControl index={rasters} settings={radar} view={radarView} onChange={onRadar} />
+        <LayerSwitch
+          title={t(lang, "referenceFields")}
+          tip={t(lang, "tipReference")}
+          on={referenceOn}
+          disabled={!refCount}
+          hint={refCount ? undefined : t(lang, "noRefFields")}
+          testId="reference-toggle"
+          onClick={onReference}
+        >
+          {referenceOn && (
+            <div className="legend-item">
+              <svg width={14} height={14} aria-hidden="true">
+                <rect x={2} y={2} width={10} height={10} fill="none" stroke={REFERENCE_CASING} strokeWidth={3.5} />
+                <rect x={2} y={2} width={10} height={10} fill="none" stroke={REFERENCE_COLOR} strokeWidth={1.5} strokeDasharray="3 2" />
+              </svg>
+              {t(lang, "refLegend", { n: refCount })}
+            </div>
+          )}
+          {!refCount && <p className="muted small layer-note">{t(lang, "noRefFields")}</p>}
+        </LayerSwitch>
+        <LayerSwitch title={t(lang, "alerts")} tip={t(lang, "tipAlerts")} on={alertsOpen} testId="alerts-toggle" onClick={onAlerts}>
+          {alertsOpen && alertCode && (
+            <div className="legend-item">
+              <span className="swatch" style={{ border: `2px solid ${ALERT_OUTLINE_COLOR}` }} />
+              {t(lang, "alertLegend", { label: alertLabel(lang, alertCode) })}
+            </div>
+          )}
+          {alertsOpen && !alertCode && <p className="muted small layer-note">{t(lang, "alertPick")}</p>}
+        </LayerSwitch>
+      </Disclosure>
     </section>
   );
 }

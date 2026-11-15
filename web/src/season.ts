@@ -5,13 +5,19 @@ import type { ExpressionSpecification } from "maplibre-gl";
 
 const DAY_MS = 86_400_000;
 
-// Harvested segments: plasma (perceptually uniform, colour-blind safe), early = dark blue,
-// late = yellow. It has no green or grey, so it cannot be confused with the two below.
+// The harvest map has two states: standing cane dark green, harvested amber. They differ in
+// lightness (CIELAB L* 41 against 77) as well as hue, so they stay apart with protanopia,
+// deuteranopia and tritanopia (simulated CIEDE2000 difference 26 or more as drawn; see
+// docs/DESIGN.md). Fields with no harvest date are a light neutral grey, lighter than the
+// dimmed basemap and the explorer's plain background.
+export const STANDING_COLOR = "#1b6e35";
+export const HARVESTED_COLOR = "#ffb000";
+export const UNDATED_COLOR = "#d6d6d6";
+export const DATED_OPACITY = 0.9;
+export const UNDATED_OPACITY = 0.75;
+// "Colour by harvest date" (More options): plasma (perceptually uniform, colour-blind safe),
+// early = dark blue, late = yellow, in place of the single harvested colour.
 export const RAMP = ["#0d0887", "#7e03a8", "#cc4778", "#f89540", "#f0f921"];
-export const STANDING_COLOR = "#2b8a3e";
-export const UNDATED_COLOR = "#9a9a9a";
-export const DATED_OPACITY = 0.8;
-export const UNDATED_OPACITY = 0.35;
 // Reference-field outlines: white dashes on a dark casing, unlike any fill colour above and
 // visible on both the satellite and the plain basemap.
 export const REFERENCE_COLOR = "#ffffff";
@@ -66,15 +72,16 @@ export function rampStops(minDay: number, maxDay: number): (number | string)[] {
   return RAMP.flatMap((c, i) => [minDay + (i * span) / (RAMP.length - 1), c]);
 }
 
-/** Fill colour at slider day `day`: undated grey, harvested by date, else standing green.
- * Null properties are absent from vector tiles, hence `has`. */
-export function harvestColorExpression(minDay: number, maxDay: number, day: number): ExpressionSpecification {
+/** Fill colour at slider day `day`: undated grey, harvested amber (or, `byDate`, the ramp
+ * colour of its harvest date), else standing green. Null properties are absent from vector
+ * tiles, hence `has`. */
+export function harvestColorExpression(minDay: number, maxDay: number, day: number, byDate = false): ExpressionSpecification {
   return [
     "case",
     ["!", ["has", "harvest_day"]],
     UNDATED_COLOR,
     ["<=", ["get", "harvest_day"], day],
-    ["interpolate", ["linear"], ["get", "harvest_day"], ...rampStops(minDay, maxDay)],
+    byDate ? ["interpolate", ["linear"], ["get", "harvest_day"], ...rampStops(minDay, maxDay)] : HARVESTED_COLOR,
     STANDING_COLOR,
   ] as ExpressionSpecification;
 }

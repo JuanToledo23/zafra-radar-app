@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { t, useLang } from "./i18n";
 import { Icon } from "./icons";
 
 // "Start here": three steps over the map on the first visit, dismissed for good once closed
@@ -25,6 +26,7 @@ function remember() {
 type Props = { onClose: () => void; onPlay: () => void; onOpenOps: () => void };
 
 export default function Guide({ onClose, onPlay, onOpenOps }: Props) {
+  const lang = useLang();
   const first = useRef<HTMLButtonElement>(null);
   const close = () => {
     remember();
@@ -42,18 +44,17 @@ export default function Guide({ onClose, onPlay, onOpenOps }: Props) {
   return (
     <section className="guide" role="dialog" aria-labelledby="guide-title" data-testid="guide">
       <div className="guide-head">
-        <h2 id="guide-title">Start here</h2>
-        <button type="button" className="icon-btn" aria-label="Close the guide" onClick={close}>
+        <h2 id="guide-title">{t(lang, "startHere")}</h2>
+        <button type="button" className="icon-btn" aria-label={t(lang, "closeGuide")} onClick={close}>
           <Icon name="close" />
         </button>
       </div>
-      <p className="guide-intro">Zafra Radar maps the sugarcane harvest from satellite radar. Three steps to see it:</p>
+      <p className="guide-intro">{t(lang, "guideIntro")}</p>
       <ol className="guide-steps">
         <li>
           <span className="guide-num">1</span>
           <div>
-            <strong>Play the season.</strong> Watch the fields change colour week by week as the radar detects each
-            harvest.
+            <strong>{t(lang, "guide1Title")}</strong> {t(lang, "guide1")}
             <button
               ref={first}
               type="button"
@@ -64,21 +65,20 @@ export default function Guide({ onClose, onPlay, onOpenOps }: Props) {
                 close();
               }}
             >
-              <Icon name="play" /> Play
+              <Icon name="play" /> {t(lang, "play")}
             </button>
           </div>
         </li>
         <li>
           <span className="guide-num">2</span>
           <div>
-            <strong>Click a field.</strong> The panel on the right shows its harvest date and the radar signal behind it.
+            <strong>{t(lang, "guide2Title")}</strong> {t(lang, "guide2")}
           </div>
         </li>
         <li>
           <span className="guide-num">3</span>
           <div>
-            <strong>Open Mill operations.</strong> The same data as a mill's field department would use it: this week's
-            harvested fields, lists to export and a weekly report.
+            <strong>{t(lang, "guide3Title")}</strong> {t(lang, "guide3")}
             <button
               type="button"
               className="btn btn-secondary btn-sm"
@@ -88,14 +88,14 @@ export default function Guide({ onClose, onPlay, onOpenOps }: Props) {
                 onOpenOps();
               }}
             >
-              Open Mill operations
+              {t(lang, "openOps")}
             </button>
           </div>
         </li>
       </ol>
       <div className="guide-foot">
         <button type="button" className="btn btn-ghost btn-sm" data-testid="guide-dismiss" onClick={close}>
-          Got it, don't show again
+          {t(lang, "guideDismiss")}
         </button>
       </div>
     </section>

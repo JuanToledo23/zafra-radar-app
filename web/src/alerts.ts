@@ -1,3 +1,5 @@
+import { formatDate, formatNumber, t, tValue, type Lang } from "./i18n";
+
 // Types and plain-language helpers for GET /alerts/{site} (docs/API.md).
 
 export type AlertCode = {
@@ -32,21 +34,10 @@ export type AlertPage = {
 
 export const ALERT_PAGE = 50;
 export const ALERT_OUTLINE_COLOR = "#ff2d2d"; // unlike the fill ramp, the reference and the selection colours
-export const ALERT_NOTE =
-  "Flags for review, not findings of wrongdoing. Satellite fire detections cover only part of the fires.";
-// Added to the note: why a fire rule's flag does not mean the field itself burned.
-export const ALERT_FIRE_NOTE = "A fire detected within 200 m of a field is often a neighbouring field's.";
-
-// Plain-language names for the library's alert codes (zafra.alerts.CODES).
-export const ALERT_LABELS: Record<string, string> = {
-  FIRE_ACTIVE_OUTSIDE_HOURS: "Fire outside permitted hours",
-  BURN_WITHOUT_HARVEST: "Fire with no harvest after it",
-  HARVEST_WITHOUT_FIRE: "Harvest with no fire before it",
-  HIGH_DATE_UNCERTAINTY: "Imprecise harvest date",
-  RADAR_OPTICAL_DISAGREE: "Radar and optical disagree on cane",
-  NO_BASELINE: "Harvest signal, not dated",
-};
-export const alertLabel = (code: string) => ALERT_LABELS[code] ?? code;
+// Plain-language names of the library's alert codes (zafra.alerts.CODES) are in i18n.ts
+// (alert_<code>); the review note above the list is alertNote and alertFireNote there.
+export const alertLabel = (lang: Lang, code: string) => tValue(lang, `alert_${code}`, code);
+export const severityLabel = (lang: Lang, severity: string) => tValue(lang, `sev_${severity}`, severity);
 
 /** First sentence of the library's definition, verbatim, plus the site's rule parameters. */
 export function oneLine(c: AlertCode): string {
@@ -59,23 +50,25 @@ export function oneLine(c: AlertCode): string {
 }
 
 /** Short evidence line of one alert, from the library's evidence object. */
-export function evidenceLine(a: AlertRow): string {
+export function evidenceLine(lang: Lang, a: AlertRow): string {
   const e = a.evidence;
   switch (a.code) {
     case "FIRE_ACTIVE_OUTSIDE_HOURS": {
       const win = e.burn_window as [string, string] | undefined;
-      return `Fire at ${e.datetime_local}${e.overpass ? ` (${e.overpass} overpass)` : ""}` +
-        (win ? `, window ${win[0]}–${win[1]}` : "");
+      const at = String(e.datetime_local);
+      return t(lang, "evFire", { t: `${formatDate(lang, at)} ${at.slice(11, 16)}` }) +
+        (e.overpass ? t(lang, "evOverpass", { o: String(e.overpass) }) : "") +
+        (win ? t(lang, "evWindow", { a: win[0], b: win[1] }) : "");
     }
     case "BURN_WITHOUT_HARVEST": {
       const fires = (e.fires as { datetime_local: string }[] | undefined) ?? [];
-      return `${fires.length} detection${fires.length === 1 ? "" : "s"}` +
-        (fires.length ? `, first ${fires[0].datetime_local.slice(0, 10)}` : "");
+      return t(lang, fires.length === 1 ? "evDetOne" : "evDetMany", { n: formatNumber(lang, fires.length) }) +
+        (fires.length ? t(lang, "evFirst", { d: formatDate(lang, fires[0].datetime_local) }) : "");
     }
     case "HIGH_DATE_UNCERTAINTY":
-      return `±${e.date_uncertainty_days} days`;
+      return t(lang, "evDays", { n: String(e.date_uncertainty_days) });
     case "RADAR_OPTICAL_DISAGREE":
-      return typeof e.p_other === "number" ? `${e.other_gate} gate P = ${e.p_other.toFixed(2)}` : "";
+      return typeof e.p_other === "number" ? t(lang, "evGate", { g: String(e.other_gate), p: e.p_other.toFixed(2) }) : "";
     default:
       return "";
   }

@@ -2,15 +2,18 @@ import maplibregl, { type CustomLayerInterface, type StyleSpecification } from "
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import type { Selection, Site } from "./App";
 import {
+  BASEMAP_DIM,
   BASEMAP_LAYER,
   BASEMAP_SOURCE,
   ESRI_ATTRIBUTION,
+  EXPLORER_BACKGROUND,
   ESRI_TILES,
   probeBasemap,
   type BasemapState,
 } from "./basemap";
 import { ALERT_OUTLINE_COLOR } from "./alerts";
-import { layerDates, type RasterLayer, type RadarView } from "./radar";
+import { t, useLang } from "./i18n";
+import type { RasterLayer, RadarView } from "./radar";
 import type { ReferenceCollection } from "./reference";
 import {
   DATED_OPACITY,
@@ -199,12 +202,15 @@ type Props = {
   radarOutlines: boolean;
   radarAttribution: string | null;
   compare: boolean;
+  byDate: boolean;
+  sideLabels: [string, string] | null; // compare mode: the left and right labels
 };
 
 export default function MapView({
   site, day, zoomTo, reference, referenceOn, alertCode, selected, onSelect, onBasemap,
-  radar, radarOpacity, radarOutlines, radarAttribution, compare,
+  radar, radarOpacity, radarOutlines, radarAttribution, compare, byDate, sideLabels,
 }: Props) {
+  const lang = useLang();
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -233,6 +239,8 @@ export default function MapView({
 
     const setBasemap = (s: BasemapState) => {
       if (!map.getLayer(BASEMAP_LAYER)) return;
+      // Dimmed and desaturated, so the field colours stand out (the ops map keeps it plain).
+      Object.entries(BASEMAP_DIM).forEach(([k, v]) => map.setPaintProperty(BASEMAP_LAYER, k, v));
       map.setLayoutProperty(BASEMAP_LAYER, "visibility", s === "online" ? "visible" : "none");
       onBasemap(s);
     };
@@ -243,6 +251,7 @@ export default function MapView({
     });
 
     map.on("load", async () => {
+      map.setPaintProperty("background", "background-color", EXPLORER_BACKGROUND);
       // The segment source and layers are added by the site effect once a site is known.
       let hoverId: string | null = null;
       const setHover = (id: string | null) => {
@@ -318,14 +327,14 @@ export default function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!loaded || !map || !site || day === null || !map.getLayer(FILL)) return;
-    const color = harvestColorExpression(toDay(site.harvest_date_min), toDay(site.harvest_date_max), day);
+    const color = harvestColorExpression(toDay(site.harvest_date_min), toDay(site.harvest_date_max), day, byDate);
     map.setPaintProperty(FILL, "fill-color", color);
     map.setPaintProperty(FILL, "fill-opacity", radarOn ? 0 : SEGMENT_FILL_OPACITY);
     map.setPaintProperty(LINE, "line-color", radarOn ? hovered("#ffffff", color) : SEGMENT_LINE.color);
     map.setPaintProperty(LINE, "line-width", radarOn ? hovered(2.5, 1.2) : SEGMENT_LINE.width);
     map.setPaintProperty(LINE, "line-opacity", radarOn ? hovered(1, 0.9) : SEGMENT_LINE.opacity);
     map.setLayoutProperty(LINE, "visibility", radarOn && !radarOutlines ? "none" : "visible");
-  }, [loaded, site, day, radarOn, radarOutlines]);
+  }, [loaded, site, day, radarOn, radarOutlines, byDate]);
 
   // Radar sources, below the segment layers; clip layers only in compare mode. A new site,
   // compare mode, or a side appearing or disappearing rebuilds them. A side whose layer
@@ -499,16 +508,16 @@ export default function MapView({
             <span className="radar-handle" />
           </div>
           <div className="radar-side radar-side-left" style={{ right: `${(1 - split) * 100}%` }} data-testid="radar-side-left">
-            {radar?.left ? layerDates(radar.left) : "—"}
+            {sideLabels?.[0] ?? "—"}
           </div>
           <div className="radar-side radar-side-right" style={{ left: `${split * 100}%` }} data-testid="radar-side-right">
-            {radar?.right ? (radar.right.product === "change" ? `HV change ${layerDates(radar.right)}` : layerDates(radar.right)) : "—"}
+            {sideLabels?.[1] ?? "—"}
           </div>
         </>
       )}
       {/* 256-pixel raster tiles are drawn at about one zoom level above the map's */}
       {radarOn && Math.round(zoom + 1) < minzoom && (
-        <div className="radar-zoom-note">Zoom in to see the radar imagery.</div>
+        <div className="radar-zoom-note">{t(lang, "zoomInRadar")}</div>
       )}
     </div>
   );
