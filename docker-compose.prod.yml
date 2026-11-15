@@ -1,0 +1,79 @@
+# Production stack (DEPLOY.md). Standalone, not an override of docker-compose.yml: the
+# development file publishes every port, bind-mounts the source, runs the Vite dev server
+# and has a default password, and undoing each of those in an override needs !reset tags.
+#   docker compose -f docker-compose.prod.yml up -d --build --wait
+# Values come from .env on the server (git-ignored). Caddy is the only service with ports.
+name: zafra-radar-prod
+
+x-db-env: &db-env
+  POSTGRES_DB: ${POSTGRES_DB:-zafra}
+  POSTGRES_USER: ${POSTGRES_USER:-zafra}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (never committed)}
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    platform: linux/amd64  # the image is published for amd64 only
+    restart: unless-stopped
+    environment: *db-env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  api:
+    build: ./api
+    restart: unless-stopped
+    # As the image's CMD, without --reload (the source is baked into the image).
+    command: ["sh", "-c", "python -m app.seed && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"]
+    environment:
+      <<: *db-env
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      ZAFRA_DATA: /zafra-data
+      ZAFRA_DERIVED: /zafra-derived
+    volumes:
+      # research data (same layout as the library root) and derived data, read-only
+      - ${ZAFRA_DATA:?set ZAFRA_DATA in .env, e.g. /srv/zafra/data}:/zafra-data:ro
+      - ${ZAFRA_DERIVED:?set ZAFRA_DERIVED in .env, e.g. /srv/zafra/derived}:/zafra-derived:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json,urllib.request as u; assert json.load(u.urlopen('http://localhost:8000/health'))['status']=='ok'"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  caddy:
+    # web/Dockerfile.prod: the Vite build in /srv of a Caddy image; Caddy also proxies /api.
+    build:
+      context: ./web
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    environment:
+      # "zafraradar.earth, www.zafraradar.earth" in production; ":80" for plain HTTP (Caddyfile)
+      SITE_ADDRESS: ${SITE_ADDRESS:?set SITE_ADDRESS in .env (see Caddyfile)}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"  # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data      # certificates and ACME account: keep across rebuilds
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

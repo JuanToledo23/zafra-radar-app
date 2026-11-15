@@ -1,0 +1,14 @@
+# Production image (docker-compose.prod.yml): the Vite build served by Caddy, which also
+# proxies /api to the api service (Caddyfile, mounted by compose). The first stage repeats
+# the development Dockerfile's dependency layers, so it reuses their build cache.
+FROM node:24-alpine AS build
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY . .
+RUN npm run build
+
+FROM caddy:2.10.2-alpine
+COPY --from=build /app/dist /srv

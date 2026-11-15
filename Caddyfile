@@ -1,0 +1,41 @@
+# Front end of the production stack (docker-compose.prod.yml). SITE_ADDRESS sets the site:
+#   SITE_ADDRESS="zafraradar.earth, www.zafraradar.earth"   automatic HTTPS for both names
+#   SITE_ADDRESS=":80"                                       plain HTTP on any host name (local test)
+{
+	admin off
+}
+
+{$SITE_ADDRESS} {
+	# Explicit list: the default one may not include vector tiles.
+	encode zstd gzip {
+		match {
+			header Content-Type text/*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type application/geo+json*
+			header Content-Type application/vnd.mapbox-vector-tile*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	# www.<host> -> <host>, same scheme, path and query.
+	@www header_regexp www Host ^www\.(.+)$
+	redir @www {scheme}://{re.www.1}{uri} permanent
+
+	# As the Vite dev proxy: /api/... reaches the api with the /api prefix stripped. The API's
+	# own headers (Cache-Control of the tiles) pass through unchanged.
+	handle_path /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		root * /srv
+		# Vite puts content-hashed files under /assets; everything else is revalidated.
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		@other not path /assets/*
+		header @other Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}

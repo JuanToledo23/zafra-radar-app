@@ -97,7 +97,8 @@ blank where the metadata does not state one.
 | playwright | 1.64.1 | `scripts/package.json` (dev, screenshot script) | Apache-2.0 |
 | postgis/postgis (PostGIS 3.4.3, PostgreSQL 16) | 16-3.4 | `docker-compose.yml` | |
 | python | 3.12-slim | `api/Dockerfile` | |
-| node | 24-alpine | `web/Dockerfile`, `docker-compose.offline.yml` | |
+| node | 24-alpine | `web/Dockerfile`, `web/Dockerfile.prod`, `docker-compose.offline.yml` | |
+| Caddy (https://caddyserver.com) | 2.10.2-alpine | `web/Dockerfile.prod` (production front end) | Apache-2.0 |
 
 ## Space Apps Global Offers used
 

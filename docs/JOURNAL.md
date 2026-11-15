@@ -79,3 +79,13 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
   two runs give identical counts (3,517 / 5,797). New `/alerts/{site}` with code filter and paging.
 - Web: "Alerts" list with code chips, map outline of the selected code, Load more, row opens the
   field detail. 7 new tests; 36 pass. Type-check and build pass; checked headless in Chrome.
+
+## 2026-11-14 17:13 CST
+
+- Production files: `docker-compose.prod.yml` (standalone; Caddy the only service with ports, no
+  published db/api ports, password required from `.env`), `Caddyfile`, `web/Dockerfile.prod`,
+  `deploy.sh` (rsync of the loader's own input list plus `data/derived`, then ssh), `DEPLOY.md`.
+- Loader: `--list-inputs` prints the 21 input files; a test checks it equals what `load_site` opens.
+- Local production test over HTTP on port 8080: app, `/api/health`, tiles (178,390 B, 86,833 gzip,
+  87,474 zstd, API `Cache-Control` kept), www redirect; db and api not reachable from the host.
+- Not deployed; nothing sent to a remote machine.

@@ -132,6 +132,13 @@ starts and the map renders with no network:
   (`gateway`) publishes ports 5174 and 8010, because Docker does not publish ports of
   containers on internal networks only.
 
+## Deployment
+
+Production runs on one VM: `docker-compose.prod.yml` with Caddy in front (automatic HTTPS
+for zafraradar.earth, the web build as static files, `/api` proxied to the API), deployed
+from the developer's machine with `./deploy.sh`. Setup, deploy, checks and rollback:
+[DEPLOY.md](DEPLOY.md).
+
 ## Notes
 
 * `postgis/postgis:16-3.4` is published for amd64 only; on Apple Silicon it runs under
@@ -148,6 +155,7 @@ starts and the map renders with no network:
 ## Documentation
 
 * [DATA.md](DATA.md): the input files read from the research library (`ZAFRA_DATA`).
+* [DEPLOY.md](DEPLOY.md): production deployment.
 * [docs/API.md](docs/API.md): the API endpoints and their response keys.
 * [docs/RESOURCES.md](docs/RESOURCES.md): data, resources and software used.
 * [AI_USAGE.md](AI_USAGE.md): how AI was used, in development and in the product.
