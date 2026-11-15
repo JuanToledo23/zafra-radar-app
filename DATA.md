@@ -138,8 +138,9 @@ Checked on 2026-11-14 at library commit `0d6b064` (`du -sk`, `find -type f`):
 | Brazil | `data/tiles/brazil/` | 6,289 (6,288 PNG + index) | 323 MB (apparent 313 MB) | 2026-06-24, 07-06, 08-11, 09-04, 09-28, 10-22 |
 | Both | `data/tiles/` | 12,650 | 646 MB | |
 
-`./deploy.sh --with-rasters` copies this directory (rsync, about 650 MB in 12,650 small files);
-without it the server has no tile set and the Explorer's radar control is disabled.
+`./deploy.sh --with-rasters` copies this directory (rsync, about 650 MB in 12,650 small files)
+and the app's derived overview tiles (`data/derived/tiles/`, below); without it the server
+has no tile set and the Explorer's radar control is disabled.
 
 * **Colours** (`meaning` of each layer in `/rasters/{site}`): the stretch and ramp come from
   the index; the description of what brighter / darker and blue / red mean is the library's
@@ -147,16 +148,18 @@ without it the server has no tile set and the Explorer's radar control is disabl
 * **Attribution**: "NISAR L2 GCOV (Provisional): NASA/JPL-ISRO NISAR Project, distributed by
   ASF DAAC", from the library's docs/DATA_SOURCES.md:11-15 and :28-30.
 * **Known gap in the library's tile sets:** the overview zooms 10-13 lack the easternmost
-  tile column whose zoom-14 tiles exist (both sites, every layer checked). Where the imagery
-  stops on screen, by tile zoom (MapLibre draws zoom z+1 tiles at map zoom about z):
+  tile column whose zoom-14 tiles exist, and zoom 10 (Brazil also 11) lacks the southernmost
+  row (both sites, every layer checked). Where the library's imagery stops, by tile zoom
+  (MapLibre draws zoom z+1 tiles at map zoom about z):
 
-  | Site | z10, z11 | z12 | z13 | z14 |
-  |---|---|---|---|---|
-  | Morelos | 99.141° W (11.6 km missing) | 99.053° W (2.3 km) | 99.053° W (2.3 km) | complete, to 99.031° W |
-  | Brazil | 47.813° W (6.9 km) | 47.813° W (6.9 km) | 47.769° W (2.3 km) | complete, to 47.747° W |
+  | Site | z10 | z11 | z12 | z13 | z14 |
+  |---|---|---|---|---|---|
+  | Morelos | 99.141° W (11.6 km east, 18.5 km south missing) | 99.141° W (11.6 km) | 99.053° W (2.3 km) | 99.053° W (2.3 km) | complete, to 99.031° W |
+  | Brazil | 47.812° W (6.8 km east, 9.1 km south) | 47.812° W (6.8 km east, 9.1 km south) | 47.812° W (6.8 km) | 47.769° W (2.3 km) | complete, to 47.747° W |
 
-  Cane segments lie in those strips. The fix belongs in the library (`zafra.rasters`
-  overview tiling); the app serves the files as they are.
+  The cause is in the library (`zafra.rasters.iter_tiles` keeps only whole overview tiles of
+  the block-mean grid). The library is not changed; the app fills these tiles itself
+  (derived overview tiles, below), which leaves no gap at any zoom.
 
 ## Reference fields and their dates
 
@@ -184,10 +187,12 @@ of `results/6/summaries.jsonl`.
 
 `data/derived/` (git-ignored, like all of `data/`) holds files the app computes from the
 library. The api container mounts it read-only at `/zafra-derived` (`ZAFRA_DERIVED` in
-`.env`, default `./data/derived`); the loader treats it as an optional input.
+`.env`, default `./data/derived`); the loader treats it as an optional input, and the raster
+tile route reads the derived overview tiles from it.
 
 | File | Written by | Contents |
 |---|---|---|
+| `data/derived/tiles/<site>/<layer>/{z}/{x}/{y}.png`, `data/derived/tiles/<site>/derived_tiles.json` | `tools/build_overview_tiles.py` | overview tiles (zoom 10-13) missing from the library's tile set, same format as the library's (256-pixel palette PNG, index 0 transparent); the manifest: `site`, `generated_at`, `tool`, `library` (`commit`, `commit_short`, `dirty`, `index`), `method`, `zooms`, `tiles_by_zoom`, `tiles`, `layers` (tiles per zoom of each layer) |
 | `data/derived/alerts_<site>.json` | `tools/build_alerts.py` | one object: `site`, `generated_at`, `library` (`commit`, `commit_short`, `dirty`, `script`, `rules_module`), `layer`, `burn_window`, `cane_segments`, `segments_with_alert`, `segments_with_warning`, `per_code`, `codes` (per code: `enabled`, `severity`, `params`, `count`, `definition`, `definition_source`), `alerts` (one row per alert: `segment_id`, `code`, `severity`, `evidence`) |
 
 **How it is made.** `tools/build_alerts.py` runs with the library's Python environment and
@@ -230,3 +235,39 @@ Every alerted segment id is in the slim map.
 * `HIGH_DATE_UNCERTAINTY` fires on no segment at either site (no dated segment exceeds 9 days).
 * Regenerate after any library commit that changes the rules, the configs or the harvest
   layers, then reload; `/alerts/{site}` reports the commit the loaded table came from.
+
+### Derived overview tiles
+
+`tools/build_overview_tiles.py` (library's Python environment; uses its numpy and Pillow,
+imports no library code) goes through every layer of `data/tiles/<site>/tiles_index.json`
+and zooms 13, 12, 11, 10 in that order. A tile is built when the library does not have it
+and at least one of its four children one zoom deeper exists, in the library or built just
+before. The children are mosaicked (512 × 512, a missing child is nodata), their palette
+indices read back to values on the layer's stretch, averaged over 2 × 2 blocks ignoring
+nodata (the library's overview rule, `zafra.rasters.block_mean`), re-indexed and written with
+the children's palette. Built tiles are kept as values for the next zoom up, so rounding does
+not accumulate. A tile the library has is never rebuilt or overwritten, and nothing is
+written inside the library. The API serves the library's tile when it exists and the derived
+one otherwise (header `X-Tile-Source`); `/rasters/{site}` says so in `derived_tiles`
+(docs/API.md).
+
+```bash
+# from this repository's root; ZAFRA_DATA = the library checkout; about 2 s per site
+$ZAFRA_DATA/.venv/bin/python -B tools/build_overview_tiles.py --site all --library "$ZAFRA_DATA"
+```
+
+Re-run it whenever the library regenerates its tiles (the API picks the files up at once; no
+restart). **Generated on 2026-11-14 against library commit `0d6b064`** (checkout clean):
+
+| Site | z13 | z12 | z11 | z10 | Total | Remaining gap |
+|---|---|---|---|---|---|---|
+| Morelos | 168 (7 per layer) | 96 (4) | 48 (2) | 72 (3) | 384 | none at any zoom |
+| Brazil | 168 (7) | 96 (4) | 120 (5) | 72 (3) | 456 | none at any zoom |
+
+840 PNG and 2 manifests, 20 MB on disk. Checks: rebuilding the library's own east-column
+tiles at z11-13 the same way gives the same palette index for 85 % of pixels and at most ±1
+for 99 % (a few pixels differ more where the library clipped bright targets to the stretch
+before averaging); across the seam between a library tile and the derived tile east of it the
+step between neighbouring pixel columns (mean 9.9 indices Morelos, 10.3 Brazil) equals the
+step between the last two columns inside the library tile (9.9, 10.4), so there is no seam or
+colour shift. Tests: `api/tests/test_overview_tiles.py`.

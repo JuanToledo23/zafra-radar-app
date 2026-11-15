@@ -198,21 +198,25 @@ def raster_index(site: str) -> dict:
 @app.get("/rasters/{site}")
 async def raster_layers(site: str) -> dict:
     """The site's NISAR raster layers from the library's tiles_index.json (docs/API.md)."""
-    return rasters.normalise(raster_index(site), site)
+    index = raster_index(site)
+    return rasters.normalise(index, site, rasters.read_derived(rasters.derived_root(), site))
 
 
 @app.get("/rasters/{site}/{layer}/{z}/{x}/{y}.png")
 async def raster_tile(site: str, layer: str, z: str, x: str, y: str) -> Response:
-    """One PNG tile of a layer listed in the site's index; 204 when the tile does not exist."""
+    """One PNG tile of a layer listed in the site's index: the library's, else the overview
+    tile derived by the app (X-Tile-Source says which); 204 when neither exists."""
     zi, xi, yi = tile_coords(z, x, y)
     if layer not in {entry["id"] for entry in raster_index(site)["layers"]}:
         raise HTTPException(404, f"unknown raster layer for {site}: {layer}")
-    path = rasters.tile_path(rasters.tiles_root(), site, layer, zi, xi, yi)
-    if path is None:
+    try:
+        path, i = rasters.find_tile([rasters.tiles_root(), rasters.derived_root()], site, layer, zi, xi, yi)
+    except ValueError:
         raise HTTPException(400, "invalid raster tile path")
-    if not path.is_file():
+    if path is None:
         return Response(status_code=204)
-    return FileResponse(path, media_type="image/png", headers={"Cache-Control": RASTER_CACHE})
+    return FileResponse(path, media_type="image/png",
+                        headers={"Cache-Control": RASTER_CACHE, "X-Tile-Source": ("library", "derived")[i]})
 
 SEGMENT_SQL = """
 SELECT segment_id, area_ha, p_cane, p_cane_radar, p_cane_optical, harvest_date,

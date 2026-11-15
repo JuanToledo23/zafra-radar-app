@@ -2,6 +2,11 @@
 `<ZAFRA_DATA>/data/tiles/<site>/tiles_index.json` and palette PNG tiles
 `<layer>/{z}/{x}/{y}.png` next to it. Read-only; nothing here touches the database.
 
+Overview tiles missing from the library's sets (zooms 10-13 at the east and south edges) are
+built by the app's tools/build_overview_tiles.py under `<ZAFRA_DERIVED>/tiles/<site>/`, with a
+derived_tiles.json manifest; the tile route serves the library's tile when it exists and the
+derived one otherwise.
+
 The colour meanings and the attribution are the library's own text, cited by file and line
 (library commit 0d6b064); the stretch and ramp of each layer come from its index entry."""
 
@@ -12,6 +17,8 @@ from pathlib import Path
 
 TILES_DIR = "data/tiles"  # relative to ZAFRA_DATA, where scripts/18_web_rasters.py writes
 INDEX = "tiles_index.json"
+DERIVED_DIR = "tiles"  # relative to ZAFRA_DERIVED, where tools/build_overview_tiles.py writes
+DERIVED_MANIFEST = "derived_tiles.json"
 NAME = re.compile(r"^[a-z0-9_]+$")  # site ids and layer ids of the index
 
 PRODUCTS = {"hv": "HV", "hh": "HH", "cross": "cross-ratio", "change": "change"}
@@ -62,6 +69,38 @@ def tiles_root() -> Path:
     return Path(os.environ.get("ZAFRA_DATA", "")) / TILES_DIR
 
 
+def derived_root() -> Path | None:
+    derived = os.environ.get("ZAFRA_DERIVED")
+    return Path(derived) / DERIVED_DIR if derived else None
+
+
+def read_derived(root: Path | None, site: str) -> dict | None:
+    """The manifest of the app-built overview tiles of a site, or None without one."""
+    if root is None or not NAME.match(site):
+        return None
+    try:
+        return json.loads((root / site / DERIVED_MANIFEST).read_text())
+    except (FileNotFoundError, NotADirectoryError):
+        return None
+
+
+def derived_entry(manifest: dict | None) -> dict | None:
+    """`derived_tiles` of GET /rasters/{site}: which overview tiles the app built, and how."""
+    if manifest is None:
+        return None
+    return {
+        "text": "Some overview tiles (zooms 10-13 at the east and south edges, missing from the "
+                "library's tile set) are derived by the app from the library's tiles one zoom "
+                "deeper; the library's tile is served wherever it exists.",
+        "tool": manifest.get("tool"),
+        "library_commit": manifest.get("library", {}).get("commit_short"),
+        "generated_at": manifest.get("generated_at"),
+        "method": manifest.get("method"),
+        "tiles": manifest.get("tiles"),
+        "tiles_by_zoom": manifest.get("tiles_by_zoom"),
+    }
+
+
 def read_index(root: Path, site: str) -> dict | None:
     """The site's tiles_index.json, or None when the site id is malformed or has no index."""
     if not NAME.match(site):
@@ -97,8 +136,9 @@ def layer_entry(raw: dict, site: str) -> dict:
     }
 
 
-def normalise(index: dict, site: str) -> dict:
-    """GET /rasters/{site}: the index's site-level fields and its layers (docs/API.md)."""
+def normalise(index: dict, site: str, derived: dict | None = None) -> dict:
+    """GET /rasters/{site}: the index's site-level fields and its layers (docs/API.md);
+    `derived` is the site's derived_tiles.json manifest, if any."""
     layers = [layer_entry(raw, site) for raw in index["layers"]]
     for layer in layers:
         layer.update(minzoom=index["minzoom"], maxzoom=index["maxzoom"], bounds=index["bounds"])
@@ -113,6 +153,7 @@ def normalise(index: dict, site: str) -> dict:
         "bounds": index["bounds"],
         "processing": index.get("processing"),
         "attribution": ATTRIBUTION,
+        "derived_tiles": derived_entry(derived),
         "library_index": f"{TILES_DIR}/{site}/{INDEX}",
         "layers": layers,
     }
@@ -128,3 +169,18 @@ def tile_path(root: Path, site: str, layer: str, z: int, x: int, y: int) -> Path
     if not path.is_relative_to(base) or not base.is_relative_to(root.resolve()):
         return None
     return path
+
+
+def find_tile(roots: list[Path | None], site: str, layer: str, z: int, x: int, y: int):
+    """(path, root index) of the first existing tile in `roots` (library first, then the
+    app's derived tiles), (None, None) when none has it; ValueError for a name that could
+    leave the tile directories."""
+    for i, root in enumerate(roots):
+        if root is None:
+            continue
+        path = tile_path(root, site, layer, z, x, y)
+        if path is None:
+            raise ValueError("invalid raster tile path")
+        if path.is_file():
+            return path, i
+    return None, None

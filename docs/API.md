@@ -48,7 +48,9 @@ out-of-range `z`/`x`/`y` (`0 <= z <= 22`); 404 for an unknown site.
 ## Radar imagery: `GET /rasters/{site}` and its tiles
 
 Read from `$ZAFRA_DATA/data/tiles/<site>/` (the library's `scripts/18_web_rasters.py`
-output, mounted read-only), not from the database. Code: `api/app/rasters.py`.
+output, mounted read-only), not from the database, plus the overview tiles missing from it
+that the app derives (`$ZAFRA_DERIVED/tiles/<site>/`, `tools/build_overview_tiles.py`,
+DATA.md). Code: `api/app/rasters.py`.
 
 ### `GET /rasters/{site}`
 
@@ -66,6 +68,7 @@ server deployed without `--with-rasters`).
 | `minzoom`, `maxzoom`, `bounds`, `tile_size` | 10, 14, `[west, south, east, north]` (degrees), 256 |
 | `processing` | the index's processing note |
 | `attribution` | `text`: the imagery credit; `source`: where it is taken from (library `docs/DATA_SOURCES.md:11-15, :28-30`) |
+| `derived_tiles` | null without derived tiles; else `text` ("Some overview tiles (zooms 10-13 at the east and south edges, missing from the library's tile set) are derived by the app ..."), `tool`, `library_commit`, `generated_at`, `method`, `tiles`, `tiles_by_zoom` (from `derived_tiles.json`) |
 | `library_index` | the index path relative to `ZAFRA_DATA` |
 | `layers` | 24 per site, in index order (below) |
 
@@ -95,12 +98,15 @@ curl -o t.png http://localhost:8010/rasters/morelos/hv_20251123/12/919/1832.png
 ```
 
 The tile file (`image/png`, palette PNG, index 0 transparent = nodata) with
-`Cache-Control: public, max-age=86400`, `ETag` and `Last-Modified`. 204 when the tile does
-not exist (outside the tile set or outside zoom 10-14); 404 for a site without a tile set or
+`Cache-Control: public, max-age=86400`, `ETag`, `Last-Modified` and `X-Tile-Source`:
+`library` when the library has the tile, else `derived` for the app's overview tile (the
+library's file always wins). 204 when neither exists (outside the tile set or outside zoom
+10-14); 404 for a site without a tile set or
 a layer that is not in the site's index; 400 for non-integer or out-of-range `z`/`x`/`y`.
 Path safety: the layer must be an `id` of the site's index, site and layer must match
 `[a-z0-9_]+`, `z`/`x`/`y` are integers, and the resolved path must stay inside
-`<tiles>/<site>/<layer>` (no symlink out); tested over HTTP (`api/tests/test_api.py`) and on
+`<tiles>/<site>/<layer>` of the library or of the derived tiles (no symlink out); the
+fallback order is tested on `rasters.find_tile` and over HTTP; path safety is tested over HTTP (`api/tests/test_api.py`) and on
 the path function (`api/tests/test_rasters.py`).
 
 ## `GET /segments/{site}/{segment_id}`

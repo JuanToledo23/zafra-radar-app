@@ -482,6 +482,27 @@ def test_raster_tile_png_with_cache_header(site):
         assert resp.read(8) == b"\x89PNG\r\n\x1a\n"
 
 
+@pytest.mark.parametrize("site", ["morelos", "brazil"])
+def test_raster_overview_falls_back_to_the_derived_tile(site):
+    """The library lacks the east overview column (DATA.md); the app's derived tile fills it
+    and a tile the library has is still the library's. Skipped without derived tiles."""
+    r = get_json(f"/rasters/{site}")
+    if r["derived_tiles"] is None:
+        pytest.skip("no derived overview tiles (tools/build_overview_tiles.py)")
+    assert "derived by the app" in r["derived_tiles"]["text"]
+    assert r["derived_tiles"]["tiles"] == sum(r["derived_tiles"]["tiles_by_zoom"].values())
+    w, s, e, n = r["bounds"]
+    lat = n - 1e-6  # the north row: at zoom 10 (11) the south row is derived too
+    layer = r["layers"][0]["id"]
+    for z in (10, 11, 12, 13, 14):
+        for lon, source in ((e - 1e-6, "derived" if z < 14 else "library"), (w + 1e-6, "library")):
+            x, y = tile_of(lon, lat, z)
+            with urllib.request.urlopen(f"{BASE}/rasters/{site}/{layer}/{z}/{x}/{y}.png", timeout=30) as resp:
+                assert resp.status == 200 and resp.headers["Content-Type"] == "image/png", (z, x, y)
+                assert resp.headers["X-Tile-Source"] == source, (z, x, y)
+                assert resp.headers["Cache-Control"] == "public, max-age=86400"
+
+
 def test_raster_missing_tile_unknown_layer_and_site():
     assert get("/rasters/morelos/hv_20251123/12/0/0.png")[0] == 204  # outside the tile set
     assert get("/rasters/morelos/hv_20251123/3/1/1.png")[0] == 204  # below minzoom
