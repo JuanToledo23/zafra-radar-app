@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AlertRow } from "./alerts";
+import { startAnalytics, track } from "./analytics";
 import FindField from "./FindField";
 import Guide, { guideDismissed } from "./Guide";
 import { BrandMark, Icon } from "./icons";
@@ -19,6 +20,7 @@ import {
   changeLayers,
   isSeasonCompare,
   layerDates,
+  type MapViewKind,
   resolveRadar,
   viewOf,
   viewPreset,
@@ -60,6 +62,8 @@ type View = "explorer" | "ops";
 const DEFAULT_SITE = "morelos";
 const PLAY_STEP_MS = 600;
 const ALERT_ZOOM_DEG = 0.002; // half-size of the box flown to around an alert's segment centroid
+// The map views as named in the analytics events.
+const VIEW_NAMES: Record<MapViewKind, string> = { harvest: "harvest map", radar: "radar image", compare: "before/after" };
 
 // Presenter mode (`?present=1`): the single flag for it. The tour starts on its first scene
 // with captions hidden, later scenes' data is fetched ahead, and the first visit's autoplay
@@ -137,6 +141,9 @@ export default function App() {
   const short = compact && !sheet;
   const [menuOpen, setMenuOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  // Visit counts (analytics.ts): only on the production host, not in presenter mode.
+  useEffect(() => startAnalytics(PRESENTER), []);
 
   useEffect(() => {
     fetch("/api/health")
@@ -317,6 +324,7 @@ export default function App() {
 
   const togglePlay = () => {
     if (!playing && at >= steps.length - 1) setAsOf(steps[0]); // replay from the start
+    if (!playing) track("season-played");
     setPlaying(!playing);
   };
 
@@ -326,11 +334,20 @@ export default function App() {
     setAlertsOpen(!alertsOpen);
   };
   const switchView = (v: View) => {
+    if (v === "ops" && view !== "ops") track("mill-operations-opened");
     setPlaying(false);
     setAutoplay("off");
     setCamera(null); // a map created again on return opens on its own view
     setView(v);
   };
+
+  // A field opened by the user (map, side panel, alert, Find field); a tour scene sets the
+  // selection directly and is not counted. Stable: the map is created again when its
+  // onSelect changes.
+  const openField = useCallback((s: Selection) => {
+    if (s) track(s.kind === "reference" ? "reference-field-opened" : "field-opened");
+    setSelected(s);
+  }, []);
 
   // ---- tour (tour.ts): a scene sets its site, screen and language at once; the rest once
   // that site's map has rendered and its radar index (and, for a reference field, the
@@ -341,6 +358,7 @@ export default function App() {
   useEffect(() => setMapReady(null), [view, siteId]);
   const goTo = (i: number) => {
     const scene = SCENES[i];
+    track("tour-step", { step: i + 1 });
     setTour(i);
     setPlaying(false);
     setAutoplay("off");
@@ -357,6 +375,10 @@ export default function App() {
     setCamera(null); // not applied again to a map created for this scene
     // keys go to the tour, not to a control focused in the previous scene
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  };
+  const startTour = () => {
+    track("tour-started");
+    goTo(0);
   };
   const leaveTour = () => {
     setTour(null);
@@ -440,6 +462,7 @@ export default function App() {
       onView={(v) => {
         // entering a radar view from the harvest map opens on the site's radar area
         if (mapView === "harvest" && v !== "harvest") setCamera({ target: "radar", animate: true });
+        if (v !== mapView) track("view-changed", { view: VIEW_NAMES[v] });
         setRadar(viewPreset(v, rasters, radar));
       }}
       byDate={byDate}
@@ -463,7 +486,7 @@ export default function App() {
       reference={reference}
       onFound={(sel, bbox) => {
         if (sel?.kind === "reference") setReferenceOn(true);
-        setSelected(sel);
+        openField(sel);
         setZoomTo({ bbox });
         setMenuOpen(false);
       }}
@@ -475,6 +498,7 @@ export default function App() {
       size="sm"
       value={lang}
       onChange={(l) => {
+        if (l !== lang) track("language-changed", { language: l });
         setLang(l);
         if (tour !== null && !SCENES[tour].state.lang) setTourLang(l); // the tour follows the switch
       }}
@@ -487,7 +511,7 @@ export default function App() {
       className="btn btn-ghost btn-sm guide-btn"
       aria-pressed={tour !== null}
       data-testid="tour-start"
-      onClick={() => (tour === null ? goTo(0) : leaveTour())}
+      onClick={() => (tour === null ? startTour() : leaveTour())}
     >
       <Icon name="help" /> {t(lang, "takeTour")}
     </button>
@@ -509,6 +533,7 @@ export default function App() {
             aria-label={t(lang, "site")}
             value={siteId}
             onChange={(e) => {
+              track("site-changed", { site: e.target.value });
               setSelected(null);
               setAlertCode(null);
               setSiteId(e.target.value);
@@ -584,7 +609,7 @@ export default function App() {
                 referenceOn={referenceOn}
                 alertCode={alertsOpen ? alertCode : null}
                 selected={selected}
-                onSelect={setSelected}
+                onSelect={openField}
                 onBasemap={setBasemap}
                 radar={radarView}
                 radarOpacity={radar.opacity}
@@ -606,7 +631,7 @@ export default function App() {
                     if (!playing) togglePlay();
                   }}
                   onOpenOps={() => switchView("ops")}
-                  onTour={() => goTo(0)}
+                  onTour={startTour}
                 />
               )}
               {!compact && tourCard}
@@ -626,7 +651,10 @@ export default function App() {
                 share={hectares !== null && site?.cane_area_ha ? hectares / site.cane_area_ha : null}
                 weekCounts={weekCounts}
                 seasonOpen={seasonOpen}
-                onToggleSeason={() => setSeasonOpen(!seasonOpen)}
+                onToggleSeason={() => {
+                  if (!seasonOpen) track("season-panel-opened");
+                  setSeasonOpen(!seasonOpen);
+                }}
               />
             )}
             {seasonOpen && site && (
@@ -652,13 +680,13 @@ export default function App() {
             reference={reference}
             referenceOn={referenceOn}
             onZoom={(bbox) => setZoomTo({ bbox })}
-            onSelect={setSelected}
+            onSelect={openField}
             alertsOpen={alertsOpen}
             alertCode={alertCode}
             onAlertCode={setAlertCode}
             onOpenAlert={(a: AlertRow) => {
               const [x, y] = a.centroid;
-              setSelected({ kind: "segment", id: a.segment_id });
+              openField({ kind: "segment", id: a.segment_id });
               setZoomTo({ bbox: [x - ALERT_ZOOM_DEG, y - ALERT_ZOOM_DEG, x + ALERT_ZOOM_DEG, y + ALERT_ZOOM_DEG] });
             }}
           />

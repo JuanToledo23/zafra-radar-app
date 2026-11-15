@@ -225,3 +225,11 @@ Zacatepec). Newest entry last. Times are local (America/Mexico_City).
   logo and the chart hints ("hover or tap"); weekly report still 2 pages (A4, Letter).
 - Link preview: title, description, Open Graph and Twitter tags; `og-image.jpg` is a
   screenshot of the Morelos harvest map in the week of 2 Mar 2026 (offline backdrop).
+
+## 2026-11-15 10:12 CST
+
+- Visit analytics with Umami Cloud (cookieless): `web/src/analytics.ts` inserts the tracker
+  after the app starts, only on zafraradar.earth / www, not with `?present=1` or Do Not Track.
+- Fourteen named events (site, map view, play, field and reference field opened, season panel,
+  Mill operations, weekly report, CSV export, language, tour start / step / finish, Find field
+  found or not); no field ids or typed text. Disclosed in the tour's last scene and README.

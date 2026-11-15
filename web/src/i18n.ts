@@ -464,6 +464,7 @@ const EN = {
   tourFindings: "Findings (docs/FINDINGS.md)",
   tourAppRepo: "This app's code (zafra-radar-app)",
   tourLibraryRepo: "The research library (zafra-radar-research)",
+  tourPrivacy: "This site counts visits with cookieless analytics (Umami) and collects no personal data.",
   // phones and tablets: the top bar's menu, the short screen names, the bottom sheet
   menu: "Menu",
   explorerShort: "Map",
@@ -914,6 +915,7 @@ const ES: Record<Key, string> = {
   tourFindings: "Hallazgos (docs/FINDINGS.md)",
   tourAppRepo: "El código de esta app (zafra-radar-app)",
   tourLibraryRepo: "La biblioteca de investigación (zafra-radar-research)",
+  tourPrivacy: "Este sitio cuenta las visitas con analítica sin cookies (Umami) y no recoge datos personales.",
   menu: "Menú",
   explorerShort: "Mapa",
   opsShort: "Ingenio",

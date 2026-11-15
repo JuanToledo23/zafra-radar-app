@@ -206,6 +206,12 @@ for zafraradar.earth, the web build as static files, `/api` proxied to the API),
 from the developer's machine with `./deploy.sh`. Setup, deploy, checks and rollback:
 [DEPLOY.md](DEPLOY.md).
 
+## Privacy
+
+The site counts visits with cookieless analytics ([Umami](https://umami.is)) and collects no
+personal data. The tracker loads only on zafraradar.earth, not in presenter mode
+(`?present=1`) or with Do Not Track on; events are listed in `web/src/analytics.ts`.
+
 ## Notes
 
 * `postgis/postgis:16-3.4` is published for amd64 only; on Apple Silicon it runs under

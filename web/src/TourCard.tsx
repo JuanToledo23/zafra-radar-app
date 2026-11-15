@@ -1,3 +1,4 @@
+import { track } from "./analytics";
 import { t, useLang } from "./i18n";
 import { Icon } from "./icons";
 import { LINKS, SCENES } from "./tour";
@@ -57,6 +58,7 @@ export default function TourCard({ step, presenter, onGo, onClose }: Props) {
       <h2 id="tour-title" className="tour-title">{scene.title[lang]}</h2>
       <p className="tour-caption" data-testid="tour-caption">{scene.caption[lang]}</p>
       {links}
+      {scene.closing && <p className="tour-privacy" data-testid="tour-privacy">{t(lang, "tourPrivacy")}</p>}
       <div className="tour-foot">
         <div className="tour-dots" role="group" aria-label={t(lang, "tourScenes")}>
           {SCENES.map((s, i) => (
@@ -73,7 +75,11 @@ export default function TourCard({ step, presenter, onGo, onClose }: Props) {
         <button type="button" className="btn btn-secondary btn-sm" data-testid="tour-back" disabled={step === 0} onClick={() => onGo(step - 1)}>
           {t(lang, "tourBack")}
         </button>
-        <button type="button" className="btn btn-primary btn-sm" data-testid="tour-next" onClick={() => (last ? onClose() : onGo(step + 1))}>
+        <button type="button" className="btn btn-primary btn-sm" data-testid="tour-next" onClick={() => {
+            if (!last) return onGo(step + 1);
+            track("tour-finished");
+            onClose();
+          }}>
           {t(lang, last ? "tourFinish" : "tourNext")}
         </button>
       </div>

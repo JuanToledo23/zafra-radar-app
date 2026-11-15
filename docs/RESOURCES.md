@@ -104,6 +104,13 @@ blank where the metadata does not state one.
 | node | 24-alpine | `web/Dockerfile`, `web/Dockerfile.prod`, `docker-compose.offline.yml` | |
 | Caddy (https://caddyserver.com) | 2.10.2-alpine | `web/Dockerfile.prod` (production front end) | Apache-2.0 |
 
+## Third-party services
+
+- **Umami Cloud** (https://umami.is), cookieless visit analytics: page views and a few named
+  interface events (`web/src/analytics.ts`), no personal data. Script
+  https://cloud.umami.is/script.js, loaded only on zafraradar.earth and www.zafraradar.earth,
+  not in presenter mode or with Do Not Track on.
+
 ## Space Apps Global Offers used
 
 - Domain registration

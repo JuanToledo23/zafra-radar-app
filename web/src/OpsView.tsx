@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { Site } from "./App";
+import { track } from "./analytics";
 import { count, formatDate, formatNumber, siteSubtitle, t, tValue, type Key, type Lang } from "./i18n";
 import { Icon } from "./icons";
 import OpsMap, { type OpsFocus } from "./OpsMap";
@@ -161,10 +162,11 @@ export default function OpsView({ site, day, onDay, lang }: Props) {
               <Icon name="chevronRight" />
             </button>
           </div>
-          <a className="btn btn-secondary" data-testid="export-ledger" download href={`${api}/ledger.csv?as_of=${iso}`}>
+          <a className="btn btn-secondary" data-testid="export-ledger" download onClick={() => track("csv-exported", { list: "field ledger" })} href={`${api}/ledger.csv?as_of=${iso}`}>
             <Icon name="download" /> {t(lang, "exportLedger")}
           </a>
           <a className="btn btn-primary" data-testid="weekly-report" target="_blank" rel="noreferrer"
+            onClick={() => track("weekly-report-opened")}
             href={`/?report=${encodeURIComponent(site.site_id)}&as_of=${iso}&lang=${lang}`}>
             <Icon name="report" /> {t(lang, "weeklyReport")}
           </a>
@@ -237,6 +239,7 @@ export default function OpsView({ site, day, onDay, lang }: Props) {
                   ))}
                 </span>
                 <a className="btn btn-secondary btn-sm" data-testid="export-harvested" download
+                  onClick={() => track("csv-exported", { list: "harvested" })}
                   href={`${api}/harvested.csv?as_of=${iso}&days=${days}`}><Icon name="download" /> {t(lang, "exportList")}</a>
               </div>
               <p className="muted small ops-help">{t(lang, "harvestedHelp", { days })}</p>
@@ -270,6 +273,7 @@ export default function OpsView({ site, day, onDay, lang }: Props) {
               <div className="ops-list-head">
                 <p className="muted small ops-help">{t(lang, "notDetectedHelp")}</p>
                 <a className="btn btn-secondary btn-sm" data-testid="export-not-detected" download
+                  onClick={() => track("csv-exported", { list: "not detected" })}
                   href={`${api}/not-detected.csv?as_of=${iso}`}><Icon name="download" /> {t(lang, "exportList")}</a>
               </div>
               <Paged lang={lang} list={notDetected} empty={t(lang, "emptyNotDetected")} fields={fields}

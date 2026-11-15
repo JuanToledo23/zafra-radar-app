@@ -327,6 +327,7 @@ a { color: var(--accent); }
 .tour-caption { font-size: 14px; color: var(--text-2); margin: 0; }
 .tour-links { margin: 8px 0 0; padding-left: 18px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
 .tour-links a { color: var(--accent); }
+.tour-privacy { margin: 8px 0 0; font-size: 12px; color: var(--text-3); }
 .tour-foot { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .tour-dots { flex: 1; display: flex; gap: 2px; }
 .tour-dot { width: 16px; height: 16px; padding: 0; border: 0; background: none; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 50%; }

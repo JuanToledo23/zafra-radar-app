@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Selection } from "./App";
+import { track } from "./analytics";
 import { t, useLang } from "./i18n";
 import { Icon } from "./icons";
 import type { ReferenceCollection } from "./reference";
@@ -25,6 +26,7 @@ export default function FindField({ siteId, reference, onFound }: Props) {
     if (!id) return;
     const field = reference?.features.find((f) => f.properties.field_id.toLowerCase() === id);
     if (field) {
+      track("find-field", { result: "found" });
       setStatus("idle");
       onFound({ kind: "reference", id: field.properties.field_id }, field.properties.bbox);
       return;
@@ -32,11 +34,16 @@ export default function FindField({ siteId, reference, onFound }: Props) {
     setStatus("searching");
     try {
       const r = await fetch(`/api/segments/${siteId}/${encodeURIComponent(id)}`);
-      if (!r.ok) return setStatus("not-found");
+      if (!r.ok) {
+        track("find-field", { result: "not found" });
+        return setStatus("not-found");
+      }
       const seg: { segment_id: string; bbox: Bbox } = await r.json();
+      track("find-field", { result: "found" });
       setStatus("idle");
       onFound({ kind: "segment", id: seg.segment_id }, seg.bbox);
     } catch {
+      track("find-field", { result: "not found" });
       setStatus("not-found");
     }
   };
